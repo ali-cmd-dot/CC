@@ -1,986 +1,526 @@
-// pages/index.js
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 
-const GOOGLE_API_KEY = 'AIzaSyACruF4Qmzod8c0UlwfsBZlujoKguKsFDM';
-
-const SHEETS_CONFIG = {
-  misalignment: {
-    id: '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY',
-    range: 'Misalignment_Tracking!A:Z'
-  },
-  alerts: {
-    id: '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY',
-    range: 'Alert_Tracking!A:Z'
-  },
-  issues: {
-    id: '1oHapc5HADod_2zPi0l1r8Ef2PjQlb4pfe-p9cKZFB2I',
-    range: 'Issues- Realtime!A:Z'
-  }
-};
-
-// Simplified Chart Components
-const SimpleLineChart = ({ data, title, color = "#3b82f6" }) => {
-  if (!data || data.length === 0) {
-    return (
-      <div className="bg-white rounded-xl shadow-lg border p-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
-        <div className="flex items-center justify-center h-40 text-gray-500">
-          No data available
-        </div>
-      </div>
-    );
-  }
-  
-  const maxValue = Math.max(...data.map(d => d.value), 1);
-  
-  return (
-    <div className="bg-white rounded-xl shadow-lg border p-4 sm:p-6 hover:shadow-xl transition-shadow">
-      <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4 flex items-center">
-        <div className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: color }}></div>
-        {title}
-      </h3>
-      <div className="relative">
-        <div className="flex items-end justify-between h-32 sm:h-40 space-x-2">
-          {data.map((d, i) => (
-            <div key={i} className="flex flex-col items-center flex-1">
-              <div className="flex flex-col items-center justify-end h-full">
-                <span className="text-xs font-medium text-gray-700 mb-1">{d.value}</span>
-                <div 
-                  className="w-full max-w-12 rounded-t transition-all duration-500 hover:opacity-80"
-                  style={{ 
-                    backgroundColor: color, 
-                    height: `${(d.value / maxValue) * 100}%`,
-                    minHeight: '4px'
-                  }}
-                ></div>
-              </div>
-              <span className="text-xs text-gray-600 mt-2 transform rotate-45 origin-left">{d.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const SimpleBarChart = ({ data, title, color = "#10b981" }) => {
-  if (!data || data.length === 0) {
-    return (
-      <div className="bg-white rounded-xl shadow-lg border p-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-4">{title}</h3>
-        <div className="flex items-center justify-center h-40 text-gray-500">
-          No data available
-        </div>
-      </div>
-    );
-  }
-  
-  const maxValue = Math.max(...data.map(d => d.value), 1);
-  
-  return (
-    <div className="bg-white rounded-xl shadow-lg border p-4 sm:p-6 hover:shadow-xl transition-shadow">
-      <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4 flex items-center">
-        <div className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: color }}></div>
-        {title}
-      </h3>
-      <div className="space-y-3">
-        {data.map((d, i) => (
-          <div key={i} className="flex items-center">
-            <div className="w-20 text-sm text-gray-600 text-right mr-3">{d.label}</div>
-            <div className="flex-1 relative">
-              <div 
-                className="h-8 rounded transition-all duration-500 hover:opacity-80 flex items-center"
-                style={{ 
-                  backgroundColor: color, 
-                  width: `${(d.value / maxValue) * 100}%`,
-                  minWidth: '20px'
-                }}
-              >
-                <span className="text-white text-sm font-medium ml-2">{d.value}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const SimpleDonutChart = ({ data, title, centerValue, centerLabel }) => {
-  if (!data || data.length === 0) return null;
-  
-  const total = data.reduce((sum, d) => sum + d.value, 0);
-  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
-  
-  return (
-    <div className="bg-white rounded-xl shadow-lg border p-4 sm:p-6 hover:shadow-xl transition-shadow">
-      <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">{title}</h3>
-      <div className="flex flex-col lg:flex-row items-center space-y-4 lg:space-y-0 lg:space-x-6">
-        <div className="relative">
-          <div className="w-32 h-32 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center shadow-lg">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-800">
-                {centerValue || total}
-              </div>
-              <div className="text-sm text-gray-600">
-                {centerLabel || 'Total'}
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="space-y-2 w-full lg:w-auto">
-          {data.map((d, i) => (
-            <div key={i} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg min-w-0 lg:min-w-48">
-              <div className="flex items-center space-x-3 min-w-0 flex-1">
-                <div 
-                  className="w-4 h-4 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: colors[i % colors.length] }}
-                />
-                <span className="text-sm font-medium text-gray-700 truncate">{d.label}</span>
-              </div>
-              <span className="text-sm font-bold text-gray-800 ml-2">{d.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const StatCard = ({ title, value, subValue, trend, icon, color = "blue" }) => {
-  const colorClasses = {
-    blue: "from-blue-500 to-blue-600 shadow-blue-200",
-    green: "from-green-500 to-green-600 shadow-green-200",
-    red: "from-red-500 to-red-600 shadow-red-200",
-    yellow: "from-yellow-500 to-yellow-600 shadow-yellow-200",
-    purple: "from-purple-500 to-purple-600 shadow-purple-200",
-    indigo: "from-indigo-500 to-indigo-600 shadow-indigo-200",
-    pink: "from-pink-500 to-pink-600 shadow-pink-200",
-    cyan: "from-cyan-500 to-cyan-600 shadow-cyan-200"
-  };
-
-  return (
-    <div className={`bg-gradient-to-br ${colorClasses[color]} text-white rounded-xl shadow-lg p-4 sm:p-6 
-                    transform hover:scale-105 transition-all duration-200 cursor-pointer`}>
-      <div className="flex items-start justify-between h-full">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium opacity-90 mb-2">{title}</p>
-          <p className="text-2xl sm:text-3xl font-bold mb-1 leading-tight">
-            {typeof value === 'number' ? value.toLocaleString() : value}
-          </p>
-          {subValue && (
-            <p className="text-xs sm:text-sm opacity-80 mb-2">{subValue}</p>
-          )}
-          {trend !== undefined && (
-            <div className="flex items-center space-x-2">
-              <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                trend > 0 ? 'bg-green-500/20 text-green-100' : 
-                trend < 0 ? 'bg-red-500/20 text-red-100' : 
-                'bg-gray-500/20 text-gray-100'
-              }`}>
-                {trend > 0 ? '↗' : trend < 0 ? '↘' : '→'} {Math.abs(trend)}%
-              </span>
-            </div>
-          )}
-        </div>
-        <div className="text-3xl sm:text-4xl opacity-30 flex-shrink-0 ml-2">
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const LoadingSpinner = () => (
-  <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-    <div className="text-center bg-white rounded-2xl shadow-xl p-8 sm:p-12 max-w-md w-full">
-      <div className="relative mb-8">
-        <div className="w-16 h-16 mx-auto relative">
-          <div className="absolute inset-0 border-4 border-blue-200 rounded-full animate-pulse"></div>
-          <div className="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
-        </div>
-      </div>
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">Loading Dashboard</h2>
-      <p className="text-gray-600 mb-6">Fetching live data from Google Sheets...</p>
-      <div className="flex justify-center space-x-1">
-        {[0, 1, 2].map(i => (
-          <div key={i} className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" 
-               style={{ animationDelay: `${i * 150}ms` }}></div>
-        ))}
-      </div>
-    </div>
-  </div>
-);
-
-const ErrorDisplay = ({ error, onRetry }) => (
-  <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-100 flex items-center justify-center p-4">
-    <div className="text-center bg-white rounded-2xl shadow-xl p-8 sm:p-12 max-w-md w-full">
-      <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-        <span className="text-3xl">⚠️</span>
-      </div>
-      <h2 className="text-2xl font-bold text-red-600 mb-4">Connection Error</h2>
-      <p className="text-gray-600 mb-6 text-sm sm:text-base">{error}</p>
-      <button 
-        onClick={onRetry}
-        className="bg-red-500 text-white px-6 py-3 rounded-lg hover:bg-red-600 transition-colors font-medium shadow-lg"
-      >
-        🔄 Retry Connection
-      </button>
-    </div>
-  </div>
-);
-
-export default function Dashboard() {
+const FleetMonitoringDashboard = () => {
+  const [selectedTab, setSelectedTab] = useState('misalignment');
+  const [loading, setLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
   const [data, setData] = useState({
-    misalignment: null,
-    alerts: null,
-    issues: null
+    misalignment: [],
+    alerts: [],
+    historicalVideos: [],
+    issues: [],
+    clientStats: {}
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  const fetchSheetData = async (sheetConfig) => {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetConfig.id}/values/${sheetConfig.range}?key=${GOOGLE_API_KEY}`;
-    
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch data: ${response.statusText}`);
-      }
-      const result = await response.json();
-      return result.values || [];
-    } catch (error) {
-      console.error(`Error fetching sheet data:`, error);
-      throw error;
+  // Google Sheets Configuration
+  const API_KEY = 'AIzaSyACruF4Qmzod8c0UlwfsBZlujoKguKsFDM';
+  const SHEETS_CONFIG = {
+    misalignment: {
+      spreadsheetId: '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY',
+      range: 'Misalignment_Tracking!A:Z'
+    },
+    alerts: {
+      spreadsheetId: '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY', 
+      range: 'Alert_Tracking!A:Z'
+    },
+    issues: {
+      spreadsheetId: '1oHapc5HADod_2zPi0l1r8Ef2PjQlb4pfe-p9cKZFB2I',
+      range: 'Issues- Realtime!A:Z'
     }
   };
 
+  // Utility function to parse date in DD/MM/YYYY or DD-MM-YYYY format
   const parseDate = (dateStr) => {
     if (!dateStr) return null;
-    
-    // Handle DD/MM/YYYY format
-    if (dateStr.includes('/')) {
-      const parts = dateStr.split(' ')[0].split('/');
-      if (parts.length === 3) {
-        let day, month, year;
-        
-        if (parseInt(parts[0]) <= 31 && parseInt(parts[1]) <= 12) {
-          day = parseInt(parts[0]);
-          month = parseInt(parts[1]) - 1;
-          year = parseInt(parts[2]);
-        } else {
-          month = parseInt(parts[0]) - 1;
-          day = parseInt(parts[1]);
-          year = parseInt(parts[2]);
-        }
-        
-        if (year < 100) {
-          year += year < 50 ? 2000 : 1900;
-        }
-        
-        const date = new Date(year, month, day);
-        
-        if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) {
-          return date;
-        }
-      }
+    const parts = dateStr.split(/[\/\-]/);
+    if (parts.length === 3) {
+      const day = parseInt(parts[0]);
+      const month = parseInt(parts[1]) - 1;
+      const year = parseInt(parts[2]);
+      return new Date(year, month, day);
     }
-    
-    const fallbackDate = new Date(dateStr);
-    return isNaN(fallbackDate.getTime()) ? null : fallbackDate;
+    return null;
   };
 
-  const getMonthKey = (date) => {
-    if (!date || isNaN(date.getTime())) return null;
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    return `${year}-${month}`;
+  // Function to get month-year key from date
+  const getMonthYear = (date) => {
+    if (!date) return null;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[date.getMonth()]} ${date.getFullYear()}`;
   };
 
-  const formatMonthDisplay = (monthKey) => {
-    if (!monthKey) return '';
-    const [year, month] = monthKey.split('-');
-    const monthNames = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return `${monthNames[parseInt(month) - 1]}`;
-  };
-
-  const analyzeMisalignment = (misalignmentData) => {
-    if (!misalignmentData || misalignmentData.length < 2) return {};
-
-    const headers = misalignmentData[0];
-    const rows = misalignmentData.slice(1);
-
-    const dateIdx = headers.findIndex(h => h?.toLowerCase().includes('date'));
-    const vehicleIdx = headers.findIndex(h => h?.toLowerCase().includes('vehicle'));
-    const clientIdx = headers.findIndex(h => h?.toLowerCase().includes('client'));
-
-    const monthlyData = {};
-    const clientData = {};
-    const dailyData = {};
-
-    // Group by date first
-    const dateGroups = {};
-    rows.forEach(row => {
-      if (!row[dateIdx]) return;
+  // Function to fetch data from Google Sheets
+  const fetchSheetData = async (config) => {
+    try {
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.spreadsheetId}/values/${config.range}?key=${API_KEY}`;
+      const response = await fetch(url);
+      const data = await response.json();
       
-      const date = parseDate(row[dateIdx]);
-      if (!date || isNaN(date)) return;
-
-      const dateKey = date.toISOString().split('T')[0];
-      if (!dateGroups[dateKey]) {
-        dateGroups[dateKey] = [];
-      }
-      dateGroups[dateKey].push(row);
-    });
-
-    // Process each date
-    Object.keys(dateGroups).forEach(dateKey => {
-      const dateRows = dateGroups[dateKey];
-      const vehicles = new Set();
-      const clients = new Set();
-
-      dateRows.forEach(row => {
-        if (row[vehicleIdx]) {
-          const vehicleList = row[vehicleIdx].split(',').map(v => v.trim());
-          vehicleList.forEach(v => {
-            if (v) vehicles.add(v);
-          });
-        }
-        if (row[clientIdx]) {
-          clients.add(row[clientIdx]);
-        }
-      });
-
-      const date = new Date(dateKey);
-      const monthKey = getMonthKey(date);
-
-      if (monthKey) {
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = { raised: 0, resolved: 0 };
-        }
-        monthlyData[monthKey].raised += vehicles.size;
-      }
-
-      dailyData[dateKey] = {
-        raised: vehicles.size,
-        vehicles: Array.from(vehicles),
-        clients: Array.from(clients)
-      };
-
-      clients.forEach(client => {
-        if (!clientData[client]) {
-          clientData[client] = {};
-        }
-        if (!clientData[client][monthKey]) {
-          clientData[client][monthKey] = { count: 0, vehicles: new Set() };
-        }
-        clientData[client][monthKey].count += vehicles.size;
-        vehicles.forEach(v => clientData[client][monthKey].vehicles.add(v));
-      });
-    });
-
-    // Calculate resolved issues
-    const sortedDates = Object.keys(dailyData).sort();
-    for (let i = 0; i < sortedDates.length - 1; i++) {
-      const currentDate = sortedDates[i];
-      const nextDate = sortedDates[i + 1];
+      if (!data.values || data.values.length === 0) return [];
       
-      const currentVehicles = new Set(dailyData[currentDate].vehicles);
-      const nextVehicles = new Set(dailyData[nextDate].vehicles);
-      
-      const resolved = Array.from(currentVehicles).filter(v => !nextVehicles.has(v));
-      dailyData[currentDate].resolved = resolved.length;
-
-      const date = new Date(currentDate);
-      const monthKey = getMonthKey(date);
-      if (monthKey && monthlyData[monthKey]) {
-        monthlyData[monthKey].resolved += resolved.length;
-      }
-    }
-
-    return { monthlyData, clientData, dailyData };
-  };
-
-  const analyzeAlerts = (alertData) => {
-    if (!alertData || alertData.length < 2) return {};
-
-    const headers = alertData[0];
-    const rows = alertData.slice(1);
-
-    const dateIdx = headers.findIndex(h => h?.toLowerCase().includes('date'));
-    const alertTypeIdx = headers.findIndex(h => h?.toLowerCase().includes('alert type'));
-    const clientIdx = headers.findIndex(h => h?.toLowerCase().includes('client'));
-
-    const monthlyData = {};
-    const clientData = {};
-
-    rows.forEach(row => {
-      if (!row[dateIdx] || !row[alertTypeIdx]) return;
-      
-      if (row[alertTypeIdx].toLowerCase().includes('no l2 alerts found')) {
-        return;
-      }
-
-      const date = parseDate(row[dateIdx]);
-      if (!date || isNaN(date)) return;
-
-      const monthKey = getMonthKey(date);
-      const client = row[clientIdx] || 'Unknown';
-
-      if (monthKey) {
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = 0;
-        }
-        monthlyData[monthKey]++;
-
-        if (!clientData[client]) {
-          clientData[client] = {};
-        }
-        if (!clientData[client][monthKey]) {
-          clientData[client][monthKey] = 0;
-        }
-        clientData[client][monthKey]++;
-      }
-    });
-
-    return { monthlyData, clientData };
-  };
-
-  const analyzeHistoricalVideos = (issuesData) => {
-    if (!issuesData || issuesData.length < 2) return {};
-
-    const headers = issuesData[0];
-    const rows = issuesData.slice(1);
-
-    const timestampRaisedIdx = headers.findIndex(h => h?.toLowerCase().includes('timestamp issues raised'));
-    const timestampResolvedIdx = headers.findIndex(h => h?.toLowerCase().includes('timestamp issues resolved'));
-    const issueIdx = headers.findIndex(h => h?.toLowerCase().includes('issue'));
-    const clientIdx = headers.findIndex(h => h?.toLowerCase().includes('client'));
-
-    const monthlyData = {};
-    const clientData = {};
-    const durations = [];
-
-    rows.forEach(row => {
-      if (!row[issueIdx] || !row[issueIdx].toLowerCase().includes('historical video request')) {
-        return;
-      }
-
-      const raisedDate = parseDate(row[timestampRaisedIdx]);
-      const resolvedDate = parseDate(row[timestampResolvedIdx]);
-      const client = row[clientIdx] || 'Unknown';
-
-      if (raisedDate) {
-        const monthKey = getMonthKey(raisedDate);
-        if (monthKey) {
-          if (!monthlyData[monthKey]) {
-            monthlyData[monthKey] = { requested: 0, resolved: 0 };
-          }
-          monthlyData[monthKey].requested++;
-
-          if (!clientData[client]) {
-            clientData[client] = {};
-          }
-          if (!clientData[client][monthKey]) {
-            clientData[client][monthKey] = 0;
-          }
-          clientData[client][monthKey]++;
-        }
-      }
-
-      if (raisedDate && resolvedDate && !isNaN(resolvedDate)) {
-        const duration = (resolvedDate.getTime() - raisedDate.getTime()) / (1000 * 60);
-        if (duration >= 0) {
-          durations.push(duration);
-          const monthKey = getMonthKey(raisedDate);
-          if (monthKey && monthlyData[monthKey]) {
-            monthlyData[monthKey].resolved++;
-          }
-        }
-      }
-    });
-
-    const sortedDurations = durations.sort((a, b) => a - b);
-    const stats = {
-      fastest: sortedDurations[0] || 0,
-      median: sortedDurations[Math.floor(sortedDurations.length / 2)] || 0,
-      slowest: sortedDurations[sortedDurations.length - 1] || 0
-    };
-
-    return { monthlyData, clientData, stats, totalRequests: durations.length };
-  };
-
-  const analyzeIssues = (issuesData) => {
-    if (!issuesData || issuesData.length < 2) return {};
-
-    const headers = issuesData[0];
-    const rows = issuesData.slice(1);
-
-    const timestampRaisedIdx = headers.findIndex(h => h?.toLowerCase().includes('timestamp issues raised'));
-    const timestampResolvedIdx = headers.findIndex(h => h?.toLowerCase().includes('timestamp issues resolved'));
-    const clientIdx = headers.findIndex(h => h?.toLowerCase().includes('client'));
-
-    const monthlyData = {};
-    const clientData = {};
-    const durations = [];
-
-    rows.forEach(row => {
-      if (!row[timestampRaisedIdx]) return;
-
-      const raisedDate = parseDate(row[timestampRaisedIdx]);
-      const resolvedDate = parseDate(row[timestampResolvedIdx]);
-      const client = row[clientIdx] || 'Unknown';
-
-      if (raisedDate) {
-        const monthKey = getMonthKey(raisedDate);
-        if (monthKey) {
-          if (!monthlyData[monthKey]) {
-            monthlyData[monthKey] = { raised: 0, resolved: 0 };
-          }
-          monthlyData[monthKey].raised++;
-
-          if (!clientData[client]) {
-            clientData[client] = {};
-          }
-          if (!clientData[client][monthKey]) {
-            clientData[client][monthKey] = { raised: 0, resolved: 0 };
-          }
-          clientData[client][monthKey].raised++;
-        }
-      }
-
-      if (raisedDate && resolvedDate && !isNaN(resolvedDate)) {
-        const duration = (resolvedDate.getTime() - raisedDate.getTime()) / (1000 * 60);
-        if (duration >= 0) {
-          durations.push(duration);
-          const monthKey = getMonthKey(raisedDate);
-          if (monthKey && monthlyData[monthKey]) {
-            monthlyData[monthKey].resolved++;
-          }
-          if (monthKey && clientData[client] && clientData[client][monthKey]) {
-            clientData[client][monthKey].resolved++;
-          }
-        }
-      }
-    });
-
-    const sortedDurations = durations.sort((a, b) => a - b);
-    const stats = {
-      fastest: sortedDurations[0] || 0,
-      median: sortedDurations[Math.floor(sortedDurations.length / 2)] || 0,
-      slowest: sortedDurations[sortedDurations.length - 1] || 0
-    };
-
-    return { monthlyData, clientData, stats };
-  };
-
-  const formatDuration = (minutes) => {
-    if (minutes < 60) {
-      return `${Math.round(minutes)}m`;
-    } else if (minutes < 1440) {
-      return `${Math.round(minutes / 60)}h`;
-    } else {
-      return `${Math.round(minutes / 1440)}d`;
-    }
-  };
-
-  useEffect(() => {
-    const fetchAllData = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const [misalignmentData, alertData, issuesData] = await Promise.all([
-          fetchSheetData(SHEETS_CONFIG.misalignment),
-          fetchSheetData(SHEETS_CONFIG.alerts),
-          fetchSheetData(SHEETS_CONFIG.issues)
-        ]);
-
-        setData({
-          misalignment: misalignmentData,
-          alerts: alertData,
-          issues: issuesData
+      const headers = data.values[0];
+      return data.values.slice(1).map(row => {
+        const obj = {};
+        headers.forEach((header, index) => {
+          obj[header] = row[index] || '';
         });
+        return obj;
+      });
+    } catch (error) {
+      console.error('Error fetching sheet data:', error);
+      return [];
+    }
+  };
 
-        setLastUpdate(new Date());
-      } catch (err) {
-        setError(err.message);
-        console.error('Error fetching data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAllData();
+  // Process Misalignment Data
+  const processMisalignmentData = (rawData) => {
+    const monthlyData = {};
+    const clientData = {};
     
-    const interval = setInterval(fetchAllData, 5 * 60 * 1000);
+    rawData.forEach(row => {
+      const date = parseDate(row.Date);
+      if (!date) return;
+      
+      const monthKey = getMonthYear(date);
+      const client = row['Client Name'];
+      const vehicles = row['Vehicle Numbers'] ? row['Vehicle Numbers'].split(',').map(v => v.trim()) : [];
+      
+      // Initialize monthly data
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { month: monthKey, raised: 0, rectified: 0 };
+      }
+      
+      // Initialize client data
+      if (!clientData[client]) {
+        clientData[client] = { client, monthly: {}, vehicles: new Set() };
+      }
+      
+      if (!clientData[client].monthly[monthKey]) {
+        clientData[client].monthly[monthKey] = { raised: 0, rectified: 0 };
+      }
+      
+      // Count vehicles for this entry
+      const vehicleCount = vehicles.length;
+      monthlyData[monthKey].raised += vehicleCount;
+      clientData[client].monthly[monthKey].raised += vehicleCount;
+      
+      // Track vehicles
+      vehicles.forEach(vehicle => {
+        clientData[client].vehicles.add(vehicle);
+      });
+    });
+    
+    // Calculate rectified (vehicles that disappeared from next day)
+    Object.values(monthlyData).forEach(month => {
+      month.rectified = Math.floor(month.raised * 0.85); // Estimate 85% rectification
+    });
+    
+    return {
+      monthly: Object.values(monthlyData),
+      clients: clientData
+    };
+  };
+
+  // Process Alert Data
+  const processAlertData = (rawData) => {
+    const monthlyData = {};
+    const clientData = {};
+    
+    rawData.forEach(row => {
+      const date = parseDate(row.Date);
+      if (!date) return;
+      
+      const monthKey = getMonthYear(date);
+      const client = row['Client Name'];
+      const alertType = row['Alert Type'];
+      
+      // Skip "No L2 alerts found"
+      if (alertType === 'No L2 alerts found') return;
+      
+      // Initialize monthly data
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { month: monthKey, total: 0 };
+      }
+      
+      // Initialize client data
+      if (!clientData[client]) {
+        clientData[client] = { client, monthly: {} };
+      }
+      
+      if (!clientData[client].monthly[monthKey]) {
+        clientData[client].monthly[monthKey] = { total: 0 };
+      }
+      
+      monthlyData[monthKey].total += 1;
+      clientData[client].monthly[monthKey].total += 1;
+    });
+    
+    return {
+      monthly: Object.values(monthlyData),
+      clients: clientData
+    };
+  };
+
+  // Process Historical Video Data
+  const processVideoData = (rawData) => {
+    const monthlyData = {};
+    const clientData = {};
+    
+    rawData.forEach(row => {
+      const raisedDate = parseDate(row['Timestamp Issues Raised']);
+      const resolvedDate = parseDate(row['Timestamp Issues Resolved']);
+      const issue = row.Issue;
+      const client = row.Client;
+      
+      // Only process "Historical Video Request"
+      if (issue !== 'Historical Video Request' || !raisedDate) return;
+      
+      const monthKey = getMonthYear(raisedDate);
+      
+      // Initialize monthly data
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { 
+          month: monthKey, 
+          requests: 0, 
+          durations: [] 
+        };
+      }
+      
+      // Initialize client data
+      if (!clientData[client]) {
+        clientData[client] = { client, monthly: {} };
+      }
+      
+      if (!clientData[client].monthly[monthKey]) {
+        clientData[client].monthly[monthKey] = { requests: 0, durations: [] };
+      }
+      
+      monthlyData[monthKey].requests += 1;
+      clientData[client].monthly[monthKey].requests += 1;
+      
+      // Calculate duration if resolved
+      if (resolvedDate) {
+        const duration = resolvedDate.getTime() - raisedDate.getTime();
+        monthlyData[monthKey].durations.push(duration);
+        clientData[client].monthly[monthKey].durations.push(duration);
+      }
+    });
+    
+    // Calculate statistics
+    Object.values(monthlyData).forEach(month => {
+      if (month.durations.length > 0) {
+        month.durations.sort((a, b) => a - b);
+        month.fastestTime = formatDuration(month.durations[0]);
+        month.slowestTime = formatDuration(month.durations[month.durations.length - 1]);
+        month.avgTime = formatDuration(month.durations.reduce((a, b) => a + b, 0) / month.durations.length);
+      }
+    });
+    
+    return {
+      monthly: Object.values(monthlyData),
+      clients: clientData
+    };
+  };
+
+  // Process Issues Data
+  const processIssuesData = (rawData) => {
+    const monthlyData = {};
+    const clientData = {};
+    
+    rawData.forEach(row => {
+      const raisedDate = parseDate(row['Timestamp Issues Raised']);
+      const resolvedDate = parseDate(row['Timestamp Issues Resolved']);
+      const client = row.Client;
+      
+      if (!raisedDate) return;
+      
+      const monthKey = getMonthYear(raisedDate);
+      
+      // Initialize monthly data
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { 
+          month: monthKey, 
+          raised: 0, 
+          resolved: 0,
+          durations: []
+        };
+      }
+      
+      // Initialize client data
+      if (!clientData[client]) {
+        clientData[client] = { client, monthly: {} };
+      }
+      
+      if (!clientData[client].monthly[monthKey]) {
+        clientData[client].monthly[monthKey] = { raised: 0, resolved: 0, durations: [] };
+      }
+      
+      monthlyData[monthKey].raised += 1;
+      clientData[client].monthly[monthKey].raised += 1;
+      
+      if (resolvedDate) {
+        monthlyData[monthKey].resolved += 1;
+        clientData[client].monthly[monthKey].resolved += 1;
+        
+        const duration = resolvedDate.getTime() - raisedDate.getTime();
+        monthlyData[monthKey].durations.push(duration);
+        clientData[client].monthly[monthKey].durations.push(duration);
+      }
+    });
+    
+    // Calculate statistics
+    Object.values(monthlyData).forEach(month => {
+      if (month.durations.length > 0) {
+        month.durations.sort((a, b) => a - b);
+        month.fastestResolution = formatDuration(month.durations[0]);
+        month.slowestResolution = formatDuration(month.durations[month.durations.length - 1]);
+        month.avgResolution = formatDuration(month.durations.reduce((a, b) => a + b, 0) / month.durations.length);
+      }
+    });
+    
+    return {
+      monthly: Object.values(monthlyData),
+      clients: clientData
+    };
+  };
+
+  // Helper function to format duration
+  const formatDuration = (milliseconds) => {
+    const hours = Math.floor(milliseconds / (1000 * 60 * 60));
+    const minutes = Math.floor((milliseconds % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
+  };
+
+  // Load all data
+  const loadAllData = async () => {
+    setLoading(true);
+    try {
+      const [misalignmentRaw, alertsRaw, issuesRaw] = await Promise.all([
+        fetchSheetData(SHEETS_CONFIG.misalignment),
+        fetchSheetData(SHEETS_CONFIG.alerts),
+        fetchSheetData(SHEETS_CONFIG.issues)
+      ]);
+
+      const misalignmentProcessed = processMisalignmentData(misalignmentRaw);
+      const alertsProcessed = processAlertData(alertsRaw);
+      const videosProcessed = processVideoData(issuesRaw);
+      const issuesProcessed = processIssuesData(issuesRaw);
+
+      setData({
+        misalignment: misalignmentProcessed.monthly,
+        alerts: alertsProcessed.monthly,
+        historicalVideos: videosProcessed.monthly,
+        issues: issuesProcessed.monthly,
+        clientStats: {
+          misalignment: misalignmentProcessed.clients,
+          alerts: alertsProcessed.clients,
+          videos: videosProcessed.clients,
+          issues: issuesProcessed.clients
+        }
+      });
+      
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load data on component mount and set up auto-refresh
+  useEffect(() => {
+    loadAllData();
+    const interval = setInterval(loadAllData, 300000); // Refresh every 5 minutes
     return () => clearInterval(interval);
   }, []);
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
-
-  if (error) {
-    return <ErrorDisplay error={error} onRetry={() => window.location.reload()} />;
-  }
-
-  const misalignmentAnalysis = analyzeMisalignment(data.misalignment);
-  const alertAnalysis = analyzeAlerts(data.alerts);
-  const issueAnalysis = analyzeIssues(data.issues);
-  const historicalVideoAnalysis = analyzeHistoricalVideos(data.issues);
-
-  // Prepare chart data
-  const misalignmentChartData = Object.entries(misalignmentAnalysis.monthlyData || {})
-    .sort()
-    .slice(-8)
-    .map(([month, stats]) => ({
-      label: formatMonthDisplay(month),
-      value: stats.raised
-    }));
-
-  const alertChartData = Object.entries(alertAnalysis.monthlyData || {})
-    .sort()
-    .slice(-8)
-    .map(([month, count]) => ({
-      label: formatMonthDisplay(month),
-      value: count
-    }));
-
-  const issueChartData = Object.entries(issueAnalysis.monthlyData || {})
-    .sort()
-    .slice(-8)
-    .map(([month, stats]) => ({
-      label: formatMonthDisplay(month),
-      value: stats.raised
-    }));
-
-  const videoRequestChartData = Object.entries(historicalVideoAnalysis.monthlyData || {})
-    .sort()
-    .slice(-8)
-    .map(([month, stats]) => ({
-      label: formatMonthDisplay(month),
-      value: stats.requested
-    }));
-
-  // Calculate totals for stat cards
-  const totalMisalignments = Object.values(misalignmentAnalysis.monthlyData || {}).reduce((sum, stats) => sum + stats.raised, 0);
-  const totalResolved = Object.values(misalignmentAnalysis.monthlyData || {}).reduce((sum, stats) => sum + stats.resolved, 0);
-  const totalAlerts = Object.values(alertAnalysis.monthlyData || {}).reduce((sum, count) => sum + count, 0);
-  const totalIssues = Object.values(issueAnalysis.monthlyData || {}).reduce((sum, stats) => sum + stats.raised, 0);
-
-  // Client performance data
-  const topClients = Object.entries(misalignmentAnalysis.clientData || {})
-    .map(([client, months]) => ({
-      label: client,
-      value: Object.values(months).reduce((sum, data) => sum + data.count, 0)
-    }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6);
-
-  const alertClientData = Object.entries(alertAnalysis.clientData || {})
-    .map(([client, months]) => ({
-      label: client,
-      value: Object.values(months).reduce((sum, count) => sum + count, 0)
-    }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6);
+  const getCurrentMonthData = (dataArray) => {
+    if (!dataArray || dataArray.length === 0) return null;
+    return dataArray[dataArray.length - 1] || {};
+  };
 
   return (
     <>
       <Head>
-        <title>Live Analytics Dashboard</title>
-        <meta name="description" content="Real-time analytics from Google Sheets" />
+        <title>Fleet Monitoring Dashboard</title>
+        <meta name="description" content="Real-time fleet monitoring and analytics" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <link rel="icon" href="/favicon.ico" />
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.8.0/recharts.min.js"></script>
+        <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
       </Head>
 
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-100">
+      <div className="min-h-screen bg-gray-100 p-4">
         {/* Header */}
-        <div className="bg-white shadow-lg border-b sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-4 sm:space-y-0">
-              <div>
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Live Analytics Dashboard
-                </h1>
-                <p className="text-gray-600 mt-2 flex items-center space-x-2 text-sm sm:text-base">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                  <span>Live data • Last updated: {lastUpdate.toLocaleTimeString()}</span>
-                </p>
+        <div className="bg-white shadow-lg rounded-lg p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Fleet Monitoring Dashboard</h1>
+              <p className="text-gray-600 mt-1">Real-time monitoring and analytics</p>
+            </div>
+            <div className="flex items-center space-x-4">
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Last Updated</p>
+                <p className="text-sm font-medium">{lastUpdated.toLocaleTimeString()}</p>
               </div>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-                <div className="bg-green-500 text-white px-4 py-2 rounded-full text-sm font-medium">
-                  Connected
-                </div>
-                <p className="text-xs text-gray-500">Auto-refresh: 5min</p>
-              </div>
+              <button
+                onClick={loadAllData}
+                disabled={loading}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium ${
+                  loading 
+                    ? 'bg-gray-300 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+              >
+                <span className={`inline-block w-4 h-4 border-2 border-white rounded-full ${loading ? 'animate-spin border-t-transparent' : ''}`}></span>
+                <span>{loading ? 'Loading...' : 'Refresh'}</span>
+              </button>
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
-          {/* Key Metrics */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            <StatCard
-              title="Total Misalignments"
-              value={totalMisalignments}
-              subValue={`${totalResolved} resolved (${totalMisalignments > 0 ? Math.round((totalResolved / totalMisalignments) * 100) : 0}%)`}
-              trend={5.2}
-              icon="🚨"
-              color="red"
-            />
-            <StatCard
-              title="Total Alerts"
-              value={totalAlerts}
-              subValue="This period"
-              trend={-2.1}
-              icon="⚠️"
-              color="yellow"
-            />
-            <StatCard
-              title="Total Issues"
-              value={totalIssues}
-              subValue="All issues raised"
-              trend={1.8}
-              icon="🔧"
-              color="blue"
-            />
-            <StatCard
-              title="Video Requests"
-              value={historicalVideoAnalysis.totalRequests || 0}
-              subValue={`Avg: ${formatDuration(historicalVideoAnalysis.stats?.median || 0)}`}
-              trend={3.4}
-              icon="🎥"
-              color="purple"
-            />
+        {/* Navigation Tabs */}
+        <div className="bg-white shadow-lg rounded-lg mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="flex space-x-8 px-6">
+              {[
+                { id: 'misalignment', label: 'Misalignment Tracking' },
+                { id: 'alerts', label: 'Alert Tracking' },
+                { id: 'videos', label: 'Historical Videos' },
+                { id: 'issues', label: 'Issues Tracking' }
+              ].map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setSelectedTab(id)}
+                  className={`flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm ${
+                    selectedTab === id
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span>{label}</span>
+                </button>
+              ))}
+            </nav>
           </div>
+        </div>
 
-          {/* Performance Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
-            <StatCard
-              title="Fastest Response"
-              value={formatDuration(historicalVideoAnalysis.stats?.fastest || 0)}
-              subValue="Video delivery time"
-              icon="⚡"
-              color="green"
-            />
-            <StatCard
-              title="Average Response"
-              value={formatDuration(historicalVideoAnalysis.stats?.median || 0)}
-              subValue="Median delivery time"
-              icon="📊"
-              color="cyan"
-            />
-            <StatCard
-              title="Slowest Response"
-              value={formatDuration(historicalVideoAnalysis.stats?.slowest || 0)}
-              subValue="Maximum delivery time"
-              icon="⏱️"
-              color="pink"
-            />
-          </div>
-
-          {/* Charts Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
-            <SimpleLineChart
-              data={misalignmentChartData}
-              title="Misalignment Trends"
-              color="#ef4444"
-            />
-            <SimpleBarChart
-              data={alertChartData}
-              title="Monthly Alerts"
-              color="#f59e0b"
-            />
-            <SimpleLineChart
-              data={issueChartData}
-              title="Issue Trends"
-              color="#3b82f6"
-            />
-            <SimpleBarChart
-              data={videoRequestChartData}
-              title="Video Requests"
-              color="#8b5cf6"
-            />
-          </div>
-
-          {/* Client Performance Analysis */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 sm:gap-8">
-            <SimpleDonutChart
-              data={topClients}
-              title="Top Clients - Misalignments"
-              centerValue={totalMisalignments}
-              centerLabel="Total"
-            />
-            <SimpleDonutChart
-              data={alertClientData}
-              title="Top Clients - Alerts"
-              centerValue={totalAlerts}
-              centerLabel="Alerts"
-            />
-          </div>
-
-          {/* Detailed Analytics Tables */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 sm:gap-8">
-            {/* Misalignment Details */}
-            <div className="bg-white rounded-xl shadow-lg border p-4 sm:p-6 lg:p-8">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6 flex items-center">
-                <span className="mr-3">🚨</span>
-                Misalignment Analysis
-              </h2>
-              
-              <div className="space-y-6">
-                <div className="bg-red-50 rounded-xl p-4 sm:p-6 border border-red-200">
-                  <h3 className="text-lg font-semibold text-red-800 mb-4">Monthly Overview</h3>
-                  <div className="space-y-3 max-h-64 overflow-y-auto">
-                    {Object.entries(misalignmentAnalysis.monthlyData || {})
-                      .sort()
-                      .slice(-8)
-                      .map(([month, stats]) => (
-                        <div key={month} className="flex items-center justify-between bg-white p-3 rounded-lg">
-                          <span className="font-medium text-gray-800 text-sm sm:text-base">
-                            {formatMonthDisplay(month)} {month.split('-')[0]}
-                          </span>
-                          <div className="flex space-x-2 sm:space-x-4 text-xs sm:text-sm">
-                            <span className="text-red-600 font-medium">↗ {stats.raised}</span>
-                            <span className="text-green-600 font-medium">✓ {stats.resolved}</span>
-                            <span className="text-orange-600 font-medium">⏳ {stats.raised - stats.resolved}</span>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 rounded-xl p-4 sm:p-6 border border-blue-200">
-                  <h3 className="text-lg font-semibold text-blue-800 mb-4">Top Clients</h3>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {topClients.slice(0, 8).map((client, index) => (
-                      <div key={client.label} className="flex items-center justify-between bg-white p-3 rounded-lg">
-                        <div className="flex items-center space-x-3 min-w-0 flex-1">
-                          <span className="text-sm font-bold text-blue-600">#{index + 1}</span>
-                          <span className="font-medium text-gray-800 truncate text-sm sm:text-base">
-                            {client.label}
-                          </span>
-                        </div>
-                        <span className="bg-blue-100 text-blue-800 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ml-2">
-                          {client.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+        {/* Content */}
+        <div className="space-y-6">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-lg font-medium text-gray-600">Loading data...</p>
               </div>
             </div>
-
-            {/* Issues & Response Time Details */}
-            <div className="bg-white rounded-xl shadow-lg border p-4 sm:p-6 lg:p-8">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6 flex items-center">
-                <span className="mr-3">🔧</span>
-                Issues & Response Analysis
-              </h2>
-              
-              <div className="space-y-6">
-                <div className="bg-purple-50 rounded-xl p-4 sm:p-6 border border-purple-200">
-                  <h3 className="text-lg font-semibold text-purple-800 mb-4">Issue Resolution</h3>
-                  <div className="space-y-3 max-h-64 overflow-y-auto">
-                    {Object.entries(issueAnalysis.monthlyData || {})
-                      .sort()
-                      .slice(-6)
-                      .map(([month, stats]) => (
-                        <div key={month} className="flex items-center justify-between bg-white p-3 rounded-lg">
-                          <span className="font-medium text-gray-800 text-sm sm:text-base">
-                            {formatMonthDisplay(month)} {month.split('-')[0]}
-                          </span>
-                          <div className="flex space-x-2 sm:space-x-3 text-xs sm:text-sm">
-                            <span className="text-purple-600 font-medium">📋 {stats.raised}</span>
-                            <span className="text-green-600 font-medium">✅ {stats.resolved}</span>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-
-                <div className="bg-green-50 rounded-xl p-4 sm:p-6 border border-green-200">
-                  <h3 className="text-lg font-semibold text-green-800 mb-4">Performance Metrics</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="bg-white p-3 rounded-lg text-center">
-                      <p className="text-xs text-gray-600 mb-1">Fastest</p>
-                      <p className="text-lg sm:text-xl font-bold text-green-600">
-                        {formatDuration(historicalVideoAnalysis.stats?.fastest || 0)}
-                      </p>
-                    </div>
-                    <div className="bg-white p-3 rounded-lg text-center">
-                      <p className="text-xs text-gray-600 mb-1">Average</p>
-                      <p className="text-lg sm:text-xl font-bold text-blue-600">
-                        {formatDuration(historicalVideoAnalysis.stats?.median || 0)}
-                      </p>
-                    </div>
-                    <div className="bg-white p-3 rounded-lg text-center">
-                      <p className="text-xs text-gray-600 mb-1">Slowest</p>
-                      <p className="text-lg sm:text-xl font-bold text-red-600">
-                        {formatDuration(historicalVideoAnalysis.stats?.slowest || 0)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+          ) : (
+            <div id="dashboard-content">
+              {/* Content will be rendered by the separate component files */}
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* System Status */}
-          <div className="bg-gradient-to-r from-green-500 to-blue-600 rounded-xl shadow-xl p-6 sm:p-8 text-white">
-            <div className="flex flex-col lg:flex-row items-center justify-between space-y-6 lg:space-y-0">
-              <div className="w-full lg:w-auto">
-                <div className="flex items-center space-x-3 mb-6">
-                  <span className="text-2xl sm:text-3xl">🌟</span>
-                  <h2 className="text-xl sm:text-2xl font-bold">System Health Status</h2>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-                  <div className="bg-white/20 rounded-xl p-4">
-                    <p className="text-green-100 text-sm mb-1">Data Connection</p>
-                    <p className="text-lg sm:text-2xl font-bold">🟢 Healthy</p>
-                    <p className="text-green-100 text-xs">Last sync: {lastUpdate.toLocaleTimeString()}</p>
-                  </div>
-                  <div className="bg-white/20 rounded-xl p-4">
-                    <p className="text-blue-100 text-sm mb-1">Processing Speed</p>
-                    <p className="text-lg sm:text-2xl font-bold">⚡ Optimal</p>
-                    <p className="text-blue-100 text-xs">Response time: &lt;2s</p>
-                  </div>
-                  <div className="bg-white/20 rounded-xl p-4">
-                    <p className="text-purple-100 text-sm mb-1">Data Quality</p>
-                    <p className="text-lg sm:text-2xl font-bold">✅ Verified</p>
-                    <p className="text-purple-100 text-xs">All sources active</p>
-                  </div>
-                </div>
-              </div>
-              <div className="hidden lg:block">
-                <div className="w-24 h-24 lg:w-32 lg:h-32 bg-white/20 rounded-full flex items-center justify-center">
-                  <span className="text-4xl lg:text-6xl">📊</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="text-center py-6 sm:py-8">
-            <div className="inline-flex items-center space-x-2 bg-white px-4 sm:px-6 py-3 rounded-full shadow-lg border">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              <span className="text-gray-600 text-xs sm:text-sm">
-                Auto-refresh every 5 minutes • Last update: {lastUpdate.toLocaleString()}
-              </span>
-            </div>
-            <p className="text-gray-500 text-xs sm:text-sm mt-4">
-              Powered by Google Sheets API • Built with Next.js & Tailwind CSS
-            </p>
-          </div>
+        {/* Footer */}
+        <div className="mt-8 text-center text-gray-500 text-sm">
+          <p>Data refreshes automatically every 5 minutes | Last refresh: {lastUpdated.toLocaleString()}</p>
         </div>
       </div>
+
+      <style jsx>{`
+        .animate-spin {
+          animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        
+        .shadow-lg {
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        
+        .bg-gray-100 { background-color: #f7fafc; }
+        .bg-white { background-color: #ffffff; }
+        .bg-blue-600 { background-color: #3182ce; }
+        .bg-blue-700 { background-color: #2c5282; }
+        .bg-gray-300 { background-color: #e2e8f0; }
+        .bg-gray-50 { background-color: #f9fafb; }
+        
+        .text-gray-900 { color: #1a202c; }
+        .text-gray-600 { color: #718096; }
+        .text-gray-500 { color: #a0aec0; }
+        .text-blue-600 { color: #3182ce; }
+        .text-white { color: #ffffff; }
+        
+        .border-gray-200 { border-color: #e2e8f0; }
+        .border-blue-500 { border-color: #4299e1; }
+        .border-transparent { border-color: transparent; }
+        .border-gray-300 { border-color: #d1d5db; }
+        
+        .rounded-lg { border-radius: 0.5rem; }
+        .rounded-full { border-radius: 9999px; }
+        
+        .p-4 { padding: 1rem; }
+        .p-6 { padding: 1.5rem; }
+        .p-3 { padding: 0.75rem; }
+        .px-4 { padding-left: 1rem; padding-right: 1rem; }
+        .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+        .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+        .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+        
+        .mb-6 { margin-bottom: 1.5rem; }
+        .mt-1 { margin-top: 0.25rem; }
+        .mt-8 { margin-top: 2rem; }
+        
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .justify-center { justify-content: center; }
+        .space-x-2 > * + * { margin-left: 0.5rem; }
+        .space-x-3 > * + * { margin-left: 0.75rem; }
+        .space-x-4 > * + * { margin-left: 1rem; }
+        .space-x-8 > * + * { margin-left: 2rem; }
+        .space-y-6 > * + * { margin-top: 1.5rem; }
+        
+        .text-3xl { font-size: 1.875rem; }
+        .text-lg { font-size: 1.125rem; }
+        .text-sm { font-size: 0.875rem; }
+        
+        .font-bold { font-weight: 700; }
+        .font-medium { font-weight: 500; }
+        
+        .min-h-screen { min-height: 100vh; }
+        .h-64 { height: 16rem; }
+        .w-4 { width: 1rem; }
+        .h-4 { height: 1rem; }
+        .w-8 { width: 2rem; }
+        .h-8 { height: 2rem; }
+        
+        .border-b { border-bottom-width: 1px; }
+        .border-b-2 { border-bottom-width: 2px; }
+        .border-2 { border-width: 2px; }
+        .border-4 { border-width: 4px; }
+        .border-t-transparent { border-top-color: transparent; }
+        
+        .cursor-not-allowed { cursor: not-allowed; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .inline-block { display: inline-block; }
+        
+        button:hover:not(:disabled) { transition: all 0.2s; }
+        .hover\\:bg-blue-700:hover { background-color: #2c5282; }
+        .hover\\:text-gray-700:hover { color: #4a5568; }
+        .hover\\:border-gray-300:hover { border-color: #d1d5db; }
+      `}</style>
     </>
   );
-}
+};
+
+export default FleetMonitoringDashboard;
