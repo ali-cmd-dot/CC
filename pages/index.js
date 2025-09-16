@@ -13,7 +13,7 @@ const SHEETS_CONFIG = {
   alerts: {
     id: '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY',
     range: 'Alert_Tracking!A:Z',
-    gid: '1740135614'
+    gid: '2092228787'
   },
   issues: {
     id: '1oHapc5HADod_2zPi0l1r8Ef2PjQlb4pfe-p9cKZFB2I',
@@ -244,22 +244,64 @@ export default function Dashboard() {
   const parseDate = (dateStr) => {
     if (!dateStr) return null;
     
+    // Handle DD/MM/YYYY format (most common in your sheets)
     if (dateStr.includes('/')) {
       const parts = dateStr.split(' ')[0].split('/');
       if (parts.length === 3) {
-        const day = parseInt(parts[0]);
-        const month = parseInt(parts[1]) - 1;
-        const year = parseInt(parts[2]);
-        return new Date(year, month, day);
+        // Determine if it's DD/MM/YYYY or MM/DD/YYYY based on your data
+        let day, month, year;
+        
+        // For your Indian format, assuming DD/MM/YYYY
+        if (parseInt(parts[0]) <= 31 && parseInt(parts[1]) <= 12) {
+          day = parseInt(parts[0]);
+          month = parseInt(parts[1]) - 1; // Month is 0-indexed
+          year = parseInt(parts[2]);
+        } else {
+          // Fallback to MM/DD/YYYY if first part > 31
+          month = parseInt(parts[0]) - 1;
+          day = parseInt(parts[1]);
+          year = parseInt(parts[2]);
+        }
+        
+        // Handle 2-digit years
+        if (year < 100) {
+          year += year < 50 ? 2000 : 1900;
+        }
+        
+        const date = new Date(year, month, day);
+        
+        // Validate the date
+        if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) {
+          return date;
+        }
       }
     }
     
-    return new Date(dateStr);
+    // Handle other formats like 'YYYY-MM-DD' or direct Date strings
+    const fallbackDate = new Date(dateStr);
+    return isNaN(fallbackDate.getTime()) ? null : fallbackDate;
   };
 
   const getMonthKey = (date) => {
-    if (!date || isNaN(date)) return null;
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    if (!date || isNaN(date.getTime())) return null;
+    
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    
+    // Return in YYYY-MM format for proper sorting
+    return `${year}-${month}`;
+  };
+
+  const formatMonthDisplay = (monthKey) => {
+    if (!monthKey) return '';
+    
+    const [year, month] = monthKey.split('-');
+    const monthNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    
+    return `${monthNames[parseInt(month) - 1]} ${year}`;
   };
 
   const analyzeHistoricalVideos = (issuesData) => {
@@ -622,7 +664,7 @@ export default function Dashboard() {
     .sort()
     .slice(-6)
     .map(([month, stats]) => ({
-      label: month,
+      label: formatMonthDisplay(month),
       value: stats.raised
     }));
 
@@ -630,7 +672,7 @@ export default function Dashboard() {
     .sort()
     .slice(-6)
     .map(([month, count]) => ({
-      label: month,
+      label: formatMonthDisplay(month),
       value: count
     }));
 
@@ -638,7 +680,7 @@ export default function Dashboard() {
     .sort()
     .slice(-6)
     .map(([month, stats]) => ({
-      label: month,
+      label: formatMonthDisplay(month),
       value: stats.raised
     }));
 
@@ -827,7 +869,7 @@ export default function Dashboard() {
                       .slice(-5)
                       .map(([month, stats]) => (
                         <div key={month} className="flex items-center justify-between bg-white p-3 rounded-lg">
-                          <span className="font-medium text-gray-800">{month}</span>
+                          <span className="font-medium text-gray-800">{formatMonthDisplay(month)}</span>
                           <div className="flex space-x-4 text-sm">
                             <span className="text-red-600 font-medium">↗ {stats.raised}</span>
                             <span className="text-green-600 font-medium">✓ {stats.resolved}</span>
@@ -875,7 +917,7 @@ export default function Dashboard() {
                       .slice(-6)
                       .map(([month, count]) => (
                         <div key={month} className="bg-white p-3 rounded-lg text-center">
-                          <p className="text-sm text-gray-600">{month}</p>
+                          <p className="text-sm text-gray-600">{formatMonthDisplay(month)}</p>
                           <p className="text-xl font-bold text-yellow-600">{count}</p>
                         </div>
                       ))}
@@ -890,7 +932,7 @@ export default function Dashboard() {
                       .slice(-4)
                       .map(([month, stats]) => (
                         <div key={month} className="flex items-center justify-between bg-white p-3 rounded-lg">
-                          <span className="font-medium text-gray-800">{month}</span>
+                          <span className="font-medium text-gray-800">{formatMonthDisplay(month)}</span>
                           <div className="flex space-x-3 text-sm">
                             <span className="text-purple-600 font-medium">📋 {stats.raised}</span>
                             <span className="text-green-600 font-medium">✅ {stats.resolved}</span>
