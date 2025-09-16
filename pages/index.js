@@ -1,723 +1,747 @@
-import { useState, useEffect } from 'react';
-import Head from 'next/head';
+import React, { useState, useEffect } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line, PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import { Calendar, AlertTriangle, Video, Settings, TrendingUp, Clock, Users } from 'lucide-react';
 
-const FleetMonitoringDashboard = () => {
-  const [selectedTab, setSelectedTab] = useState('misalignment');
-  const [loading, setLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(new Date());
+const API_KEY = 'AIzaSyACruF4Qmzod8c0UlwfsBZlujoKguKsFDM';
+const SHEET_ID_1 = '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY';
+const SHEET_ID_2 = '1oHapc5HADod_2zPi0l1r8Ef2PjQlb4pfe-p9cKZFB2I';
+
+const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff88', '#ff0080'];
+
+const Dashboard = () => {
+  const [activeTab, setActiveTab] = useState('overview');
   const [data, setData] = useState({
-    misalignment: [],
+    misalignments: [],
     alerts: [],
     historicalVideos: [],
-    issues: [],
-    clientStats: {}
+    issues: []
+  });
+  const [loading, setLoading] = useState(true);
+  const [analytics, setAnalytics] = useState({
+    misalignmentStats: {},
+    alertStats: {},
+    videoStats: {},
+    issueStats: {}
   });
 
-  // Google Sheets Configuration
-  const API_KEY = 'AIzaSyACruF4Qmzod8c0UlwfsBZlujoKguKsFDM';
-  const SHEETS_CONFIG = {
-    misalignment: {
-      spreadsheetId: '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY',
-      range: 'Misalignment_Tracking!A:Z'
-    },
-    alerts: {
-      spreadsheetId: '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY', 
-      range: 'Alert_Tracking!A:Z'
-    },
-    issues: {
-      spreadsheetId: '1oHapc5HADod_2zPi0l1r8Ef2PjQlb4pfe-p9cKZFB2I',
-      range: 'Issues- Realtime!A:Z'
-    }
-  };
-
-  // Utility function to parse date in DD/MM/YYYY or DD-MM-YYYY format
-  const parseDate = (dateStr) => {
-    if (!dateStr) return null;
-    const parts = dateStr.split(/[\/\-]/);
-    if (parts.length === 3) {
-      const day = parseInt(parts[0]);
-      const month = parseInt(parts[1]) - 1;
-      const year = parseInt(parts[2]);
-      return new Date(year, month, day);
-    }
-    return null;
-  };
-
-  // Function to get month-year key from date
-  const getMonthYear = (date) => {
-    if (!date) return null;
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[date.getMonth()]} ${date.getFullYear()}`;
-  };
-
-  // Function to fetch data from Google Sheets
-  const fetchSheetData = async (config) => {
+  const fetchSheetData = async (sheetId, tabName) => {
     try {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${config.spreadsheetId}/values/${config.range}?key=${API_KEY}`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${tabName}?key=${API_KEY}`;
       const response = await fetch(url);
-      const data = await response.json();
-      
-      if (!data.values || data.values.length === 0) return [];
-      
-      const headers = data.values[0];
-      return data.values.slice(1).map(row => {
-        const obj = {};
-        headers.forEach((header, index) => {
-          obj[header] = row[index] || '';
-        });
-        return obj;
-      });
+      const result = await response.json();
+      return result.values || [];
     } catch (error) {
-      console.error('Error fetching sheet data:', error);
+      console.error(`Error fetching ${tabName}:`, error);
       return [];
     }
   };
 
-  // Process Misalignment Data
-  const processMisalignmentData = (rawData) => {
-    const monthlyData = {};
-    const clientData = {};
+  const parseDate = (dateStr) => {
+    if (!dateStr) return null;
     
-    rawData.forEach(row => {
-      const date = parseDate(row.Date);
-      if (!date) return;
-      
-      const monthKey = getMonthYear(date);
-      const client = row['Client Name'];
-      const vehicles = row['Vehicle Numbers'] ? row['Vehicle Numbers'].split(',').map(v => v.trim()) : [];
-      
-      if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = { month: monthKey, raised: 0, rectified: 0 };
-      }
-      
-      if (!clientData[client]) {
-        clientData[client] = { client, monthly: {}, vehicles: new Set() };
-      }
-      
-      if (!clientData[client].monthly[monthKey]) {
-        clientData[client].monthly[monthKey] = { raised: 0, rectified: 0 };
-      }
-      
-      const vehicleCount = vehicles.length;
-      monthlyData[monthKey].raised += vehicleCount;
-      clientData[client].monthly[monthKey].raised += vehicleCount;
-      
-      vehicles.forEach(vehicle => {
-        clientData[client].vehicles.add(vehicle);
-      });
-    });
+    // Handle different date formats
+    const formats = [
+      /(\d{1,2})\/(\d{1,2})\/(\d{4})/,  // DD/MM/YYYY
+      /(\d{1,2})\/(\d{1,2})\/(\d{2})/,   // DD/MM/YY
+      /(\d{4})-(\d{1,2})-(\d{1,2})/      // YYYY-MM-DD
+    ];
     
-    Object.values(monthlyData).forEach(month => {
-      month.rectified = Math.floor(month.raised * 0.85);
-    });
-    
-    return {
-      monthly: Object.values(monthlyData),
-      clients: clientData
-    };
-  };
-
-  // Process Alert Data
-  const processAlertData = (rawData) => {
-    const monthlyData = {};
-    const clientData = {};
-    
-    rawData.forEach(row => {
-      const date = parseDate(row.Date);
-      if (!date) return;
-      
-      const monthKey = getMonthYear(date);
-      const client = row['Client Name'];
-      const alertType = row['Alert Type'];
-      
-      if (alertType === 'No L2 alerts found') return;
-      
-      if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = { month: monthKey, total: 0 };
-      }
-      
-      if (!clientData[client]) {
-        clientData[client] = { client, monthly: {} };
-      }
-      
-      if (!clientData[client].monthly[monthKey]) {
-        clientData[client].monthly[monthKey] = { total: 0 };
-      }
-      
-      monthlyData[monthKey].total += 1;
-      clientData[client].monthly[monthKey].total += 1;
-    });
-    
-    return {
-      monthly: Object.values(monthlyData),
-      clients: clientData
-    };
-  };
-
-  // Process Historical Video Data
-  const processVideoData = (rawData) => {
-    const monthlyData = {};
-    const clientData = {};
-    
-    rawData.forEach(row => {
-      const raisedDate = parseDate(row['Timestamp Issues Raised']);
-      const resolvedDate = parseDate(row['Timestamp Issues Resolved']);
-      const issue = row.Issue;
-      const client = row.Client;
-      
-      if (issue !== 'Historical Video Request' || !raisedDate) return;
-      
-      const monthKey = getMonthYear(raisedDate);
-      
-      if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = { 
-          month: monthKey, 
-          requests: 0, 
-          durations: [] 
-        };
-      }
-      
-      if (!clientData[client]) {
-        clientData[client] = { client, monthly: {} };
-      }
-      
-      if (!clientData[client].monthly[monthKey]) {
-        clientData[client].monthly[monthKey] = { requests: 0, durations: [] };
-      }
-      
-      monthlyData[monthKey].requests += 1;
-      clientData[client].monthly[monthKey].requests += 1;
-      
-      if (resolvedDate) {
-        const duration = resolvedDate.getTime() - raisedDate.getTime();
-        monthlyData[monthKey].durations.push(duration);
-        clientData[client].monthly[monthKey].durations.push(duration);
-      }
-    });
-    
-    Object.values(monthlyData).forEach(month => {
-      if (month.durations.length > 0) {
-        month.durations.sort((a, b) => a - b);
-        month.fastestTime = formatDuration(month.durations[0]);
-        month.slowestTime = formatDuration(month.durations[month.durations.length - 1]);
-        month.avgTime = formatDuration(month.durations.reduce((a, b) => a + b, 0) / month.durations.length);
-      }
-    });
-    
-    return {
-      monthly: Object.values(monthlyData),
-      clients: clientData
-    };
-  };
-
-  // Process Issues Data
-  const processIssuesData = (rawData) => {
-    const monthlyData = {};
-    const clientData = {};
-    
-    rawData.forEach(row => {
-      const raisedDate = parseDate(row['Timestamp Issues Raised']);
-      const resolvedDate = parseDate(row['Timestamp Issues Resolved']);
-      const client = row.Client;
-      
-      if (!raisedDate) return;
-      
-      const monthKey = getMonthYear(raisedDate);
-      
-      if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = { 
-          month: monthKey, 
-          raised: 0, 
-          resolved: 0,
-          durations: []
-        };
-      }
-      
-      if (!clientData[client]) {
-        clientData[client] = { client, monthly: {} };
-      }
-      
-      if (!clientData[client].monthly[monthKey]) {
-        clientData[client].monthly[monthKey] = { raised: 0, resolved: 0, durations: [] };
-      }
-      
-      monthlyData[monthKey].raised += 1;
-      clientData[client].monthly[monthKey].raised += 1;
-      
-      if (resolvedDate) {
-        monthlyData[monthKey].resolved += 1;
-        clientData[client].monthly[monthKey].resolved += 1;
-        
-        const duration = resolvedDate.getTime() - raisedDate.getTime();
-        monthlyData[monthKey].durations.push(duration);
-        clientData[client].monthly[monthKey].durations.push(duration);
-      }
-    });
-    
-    Object.values(monthlyData).forEach(month => {
-      if (month.durations.length > 0) {
-        month.durations.sort((a, b) => a - b);
-        month.fastestResolution = formatDuration(month.durations[0]);
-        month.slowestResolution = formatDuration(month.durations[month.durations.length - 1]);
-        month.avgResolution = formatDuration(month.durations.reduce((a, b) => a + b, 0) / month.durations.length);
-      }
-    });
-    
-    return {
-      monthly: Object.values(monthlyData),
-      clients: clientData
-    };
-  };
-
-  const formatDuration = (milliseconds) => {
-    const hours = Math.floor(milliseconds / (1000 * 60 * 60));
-    const minutes = Math.floor((milliseconds % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-    return `${minutes}m`;
-  };
-
-  const loadAllData = async () => {
-    setLoading(true);
-    try {
-      const [misalignmentRaw, alertsRaw, issuesRaw] = await Promise.all([
-        fetchSheetData(SHEETS_CONFIG.misalignment),
-        fetchSheetData(SHEETS_CONFIG.alerts),
-        fetchSheetData(SHEETS_CONFIG.issues)
-      ]);
-
-      const misalignmentProcessed = processMisalignmentData(misalignmentRaw);
-      const alertsProcessed = processAlertData(alertsRaw);
-      const videosProcessed = processVideoData(issuesRaw);
-      const issuesProcessed = processIssuesData(issuesRaw);
-
-      setData({
-        misalignment: misalignmentProcessed.monthly,
-        alerts: alertsProcessed.monthly,
-        historicalVideos: videosProcessed.monthly,
-        issues: issuesProcessed.monthly,
-        clientStats: {
-          misalignment: misalignmentProcessed.clients,
-          alerts: alertsProcessed.clients,
-          videos: videosProcessed.clients,
-          issues: issuesProcessed.clients
+    for (let format of formats) {
+      const match = dateStr.match(format);
+      if (match) {
+        if (format.source.includes('\\d{4}') && match[3].length === 4) {
+          // DD/MM/YYYY format
+          return new Date(match[3], match[2] - 1, match[1]);
+        } else if (format.source.includes('\\d{2}') && match[3].length === 2) {
+          // DD/MM/YY format
+          const year = parseInt(match[3]) + (parseInt(match[3]) > 50 ? 1900 : 2000);
+          return new Date(year, match[2] - 1, match[1]);
+        } else if (match[1].length === 4) {
+          // YYYY-MM-DD format
+          return new Date(match[1], match[2] - 1, match[3]);
         }
-      });
-      
-      setLastUpdated(new Date());
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      setLoading(false);
+      }
     }
+    return null;
+  };
+
+  const getMonthYear = (date) => {
+    if (!date) return 'Unknown';
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  const calculateDuration = (startDate, endDate) => {
+    if (!startDate || !endDate) return null;
+    return Math.abs(endDate - startDate) / (1000 * 60 * 60); // hours
+  };
+
+  const processMisalignmentData = (rawData) => {
+    if (!rawData || rawData.length < 2) return { monthlyStats: {}, clientStats: {}, vehicleStats: {} };
+    
+    const headers = rawData[0];
+    const dateIndex = headers.findIndex(h => h.toLowerCase().includes('date'));
+    const vehicleIndex = headers.findIndex(h => h.toLowerCase().includes('vehicle'));
+    const clientIndex = headers.findIndex(h => h.toLowerCase().includes('client'));
+    
+    const monthlyStats = {};
+    const clientStats = {};
+    const vehicleStats = {};
+    
+    for (let i = 1; i < rawData.length; i++) {
+      const row = rawData[i];
+      const date = parseDate(row[dateIndex]);
+      const vehicles = row[vehicleIndex] ? row[vehicleIndex].split(',').map(v => v.trim()) : [];
+      const client = row[clientIndex] || 'Unknown';
+      
+      if (date) {
+        const monthKey = getMonthYear(date);
+        
+        if (!monthlyStats[monthKey]) {
+          monthlyStats[monthKey] = { raised: 0, resolved: 0 };
+        }
+        monthlyStats[monthKey].raised += vehicles.length;
+        
+        if (!clientStats[client]) {
+          clientStats[client] = {};
+        }
+        if (!clientStats[client][monthKey]) {
+          clientStats[client][monthKey] = { raised: 0, vehicles: new Set() };
+        }
+        clientStats[client][monthKey].raised += vehicles.length;
+        
+        vehicles.forEach(vehicle => {
+          clientStats[client][monthKey].vehicles.add(vehicle);
+          if (!vehicleStats[vehicle]) {
+            vehicleStats[vehicle] = { count: 0, client };
+          }
+          vehicleStats[vehicle].count++;
+        });
+      }
+    }
+    
+    return { monthlyStats, clientStats, vehicleStats };
+  };
+
+  const processAlertData = (rawData) => {
+    if (!rawData || rawData.length < 2) return { monthlyStats: {}, clientStats: {} };
+    
+    const headers = rawData[0];
+    const dateIndex = headers.findIndex(h => h.toLowerCase().includes('date'));
+    const alertTypeIndex = headers.findIndex(h => h.toLowerCase().includes('alert type'));
+    const clientIndex = headers.findIndex(h => h.toLowerCase().includes('client'));
+    
+    const monthlyStats = {};
+    const clientStats = {};
+    
+    for (let i = 1; i < rawData.length; i++) {
+      const row = rawData[i];
+      const date = parseDate(row[dateIndex]);
+      const alertType = row[alertTypeIndex] || '';
+      const client = row[clientIndex] || 'Unknown';
+      
+      // Skip "No L2 alerts found"
+      if (alertType.toLowerCase().includes('no l2 alerts found')) continue;
+      
+      if (date) {
+        const monthKey = getMonthYear(date);
+        
+        if (!monthlyStats[monthKey]) {
+          monthlyStats[monthKey] = { count: 0 };
+        }
+        monthlyStats[monthKey].count++;
+        
+        if (!clientStats[client]) {
+          clientStats[client] = {};
+        }
+        if (!clientStats[client][monthKey]) {
+          clientStats[client][monthKey] = { count: 0 };
+        }
+        clientStats[client][monthKey].count++;
+      }
+    }
+    
+    return { monthlyStats, clientStats };
+  };
+
+  const processVideoData = (rawData) => {
+    if (!rawData || rawData.length < 2) return { monthlyStats: {}, clientStats: {}, durations: [] };
+    
+    const headers = rawData[0];
+    const raisedIndex = headers.findIndex(h => h.toLowerCase().includes('timestamp issues raised'));
+    const resolvedIndex = headers.findIndex(h => h.toLowerCase().includes('timestamp issues resolved'));
+    const issueIndex = headers.findIndex(h => h.toLowerCase().includes('issue'));
+    const clientIndex = headers.findIndex(h => h.toLowerCase().includes('client'));
+    
+    const monthlyStats = {};
+    const clientStats = {};
+    const durations = [];
+    
+    for (let i = 1; i < rawData.length; i++) {
+      const row = rawData[i];
+      const issue = row[issueIndex] || '';
+      
+      // Only process Historical Video Requests
+      if (!issue.toLowerCase().includes('historical video request')) continue;
+      
+      const raisedDate = parseDate(row[raisedIndex]);
+      const resolvedDate = parseDate(row[resolvedIndex]);
+      const client = row[clientIndex] || 'Unknown';
+      
+      if (raisedDate) {
+        const monthKey = getMonthYear(raisedDate);
+        
+        if (!monthlyStats[monthKey]) {
+          monthlyStats[monthKey] = { raised: 0, resolved: 0 };
+        }
+        monthlyStats[monthKey].raised++;
+        
+        if (resolvedDate) {
+          monthlyStats[monthKey].resolved++;
+          const duration = calculateDuration(raisedDate, resolvedDate);
+          if (duration !== null) {
+            durations.push(duration);
+          }
+        }
+        
+        if (!clientStats[client]) {
+          clientStats[client] = {};
+        }
+        if (!clientStats[client][monthKey]) {
+          clientStats[client][monthKey] = { count: 0 };
+        }
+        clientStats[client][monthKey].count++;
+      }
+    }
+    
+    return { monthlyStats, clientStats, durations };
+  };
+
+  const processIssueData = (rawData) => {
+    if (!rawData || rawData.length < 2) return { monthlyStats: {}, clientStats: {}, durations: [] };
+    
+    const headers = rawData[0];
+    const raisedIndex = headers.findIndex(h => h.toLowerCase().includes('timestamp issues raised'));
+    const resolvedIndex = headers.findIndex(h => h.toLowerCase().includes('timestamp issues resolved'));
+    const clientIndex = headers.findIndex(h => h.toLowerCase().includes('client'));
+    
+    const monthlyStats = {};
+    const clientStats = {};
+    const durations = [];
+    
+    for (let i = 1; i < rawData.length; i++) {
+      const row = rawData[i];
+      const raisedDate = parseDate(row[raisedIndex]);
+      const resolvedDate = parseDate(row[resolvedIndex]);
+      const client = row[clientIndex] || 'Unknown';
+      
+      if (raisedDate) {
+        const monthKey = getMonthYear(raisedDate);
+        
+        if (!monthlyStats[monthKey]) {
+          monthlyStats[monthKey] = { raised: 0, resolved: 0 };
+        }
+        monthlyStats[monthKey].raised++;
+        
+        if (resolvedDate) {
+          monthlyStats[monthKey].resolved++;
+          const duration = calculateDuration(raisedDate, resolvedDate);
+          if (duration !== null) {
+            durations.push(duration);
+          }
+        }
+        
+        if (!clientStats[client]) {
+          clientStats[client] = {};
+        }
+        if (!clientStats[client][monthKey]) {
+          clientStats[client][monthKey] = { raised: 0, resolved: 0 };
+        }
+        clientStats[client][monthKey].raised++;
+        if (resolvedDate) {
+          clientStats[client][monthKey].resolved++;
+        }
+      }
+    }
+    
+    return { monthlyStats, clientStats, durations };
   };
 
   useEffect(() => {
-    loadAllData();
-    const interval = setInterval(loadAllData, 300000);
+    const loadData = async () => {
+      setLoading(true);
+      
+      try {
+        const [misalignmentData, alertData, videoData, issueData] = await Promise.all([
+          fetchSheetData(SHEET_ID_1, 'Misalignment_Tracking'),
+          fetchSheetData(SHEET_ID_1, 'Alert_Tracking'),
+          fetchSheetData(SHEET_ID_2, 'Issues- Realtime'),
+          fetchSheetData(SHEET_ID_2, 'Issues- Realtime')
+        ]);
+
+        const misalignmentStats = processMisalignmentData(misalignmentData);
+        const alertStats = processAlertData(alertData);
+        const videoStats = processVideoData(videoData);
+        const issueStats = processIssueData(issueData);
+
+        setData({
+          misalignments: misalignmentData,
+          alerts: alertData,
+          historicalVideos: videoData,
+          issues: issueData
+        });
+
+        setAnalytics({
+          misalignmentStats,
+          alertStats,
+          videoStats,
+          issueStats
+        });
+      } catch (error) {
+        console.error('Error loading data:', error);
+      }
+      
+      setLoading(false);
+    };
+
+    loadData();
+    const interval = setInterval(loadData, 300000); // Refresh every 5 minutes
     return () => clearInterval(interval);
   }, []);
 
-  const getCurrentMonthData = (dataArray) => {
-    if (!dataArray || dataArray.length === 0) return {};
-    return dataArray[dataArray.length - 1] || {};
+  const getDurationStats = (durations) => {
+    if (durations.length === 0) return { fastest: 0, average: 0, slowest: 0 };
+    
+    const sorted = [...durations].sort((a, b) => a - b);
+    return {
+      fastest: sorted[0],
+      average: durations.reduce((a, b) => a + b, 0) / durations.length,
+      slowest: sorted[sorted.length - 1]
+    };
   };
 
-  const StatCard = ({ title, value, subtitle, color }) => (
-    <div className="bg-white p-6 rounded-lg shadow-lg border-l-4" style={{ borderLeftColor: color }}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-gray-600 text-sm font-medium">{title}</p>
-          <p className="text-3xl font-bold text-gray-900">{value}</p>
-          {subtitle && <p className="text-gray-500 text-xs mt-1">{subtitle}</p>}
-        </div>
-        <div className="h-8 w-8 rounded-full" style={{ backgroundColor: color, opacity: 0.2 }}></div>
-      </div>
-    </div>
-  );
+  const renderOverview = () => {
+    const monthlyMisalignments = Object.entries(analytics.misalignmentStats.monthlyStats || {})
+      .map(([month, data]) => ({ month, ...data }));
+    
+    const monthlyAlerts = Object.entries(analytics.alertStats.monthlyStats || {})
+      .map(([month, data]) => ({ month, ...data }));
 
-  const renderChart = (chartData, type = 'line') => {
-    if (!chartData || chartData.length === 0) {
-      return <div className="flex items-center justify-center h-64 text-gray-500">No data available</div>;
-    }
+    const monthlyVideos = Object.entries(analytics.videoStats.monthlyStats || {})
+      .map(([month, data]) => ({ month, ...data }));
 
-    const maxValue = Math.max(...chartData.map(item => {
-      if (type === 'bar') return item.total || 0;
-      return Math.max(...Object.keys(item).filter(key => key !== 'month').map(key => item[key] || 0));
-    }));
+    const monthlyIssues = Object.entries(analytics.issueStats.monthlyStats || {})
+      .map(([month, data]) => ({ month, ...data }));
 
     return (
-      <div className="w-full h-64 overflow-x-auto">
-        <div className="flex items-end space-x-4 h-full p-4 min-w-full">
-          {chartData.map((item, index) => (
-            <div key={index} className="flex flex-col items-center flex-shrink-0">
-              {type === 'line' ? (
-                <div className="flex space-x-1 mb-2">
-                  {Object.keys(item).filter(key => key !== 'month').map((key, keyIndex) => (
-                    <div
-                      key={key}
-                      className="w-8 rounded-t"
-                      style={{
-                        height: `${Math.max(20, ((item[key] || 0) / maxValue) * 200)}px`,
-                        backgroundColor: ['#ff7300', '#82ca9d', '#8884d8', '#ffc658'][keyIndex % 4]
-                      }}
-                    ></div>
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Total Misalignments</h3>
+                <p className="text-3xl font-bold">
+                  {monthlyMisalignments.reduce((sum, item) => sum + item.raised, 0)}
+                </p>
+              </div>
+              <Settings className="w-12 h-12 opacity-80" />
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-r from-red-500 to-red-600 text-white p-6 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Total Alerts</h3>
+                <p className="text-3xl font-bold">
+                  {monthlyAlerts.reduce((sum, item) => sum + item.count, 0)}
+                </p>
+              </div>
+              <AlertTriangle className="w-12 h-12 opacity-80" />
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-6 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Video Requests</h3>
+                <p className="text-3xl font-bold">
+                  {monthlyVideos.reduce((sum, item) => sum + item.raised, 0)}
+                </p>
+              </div>
+              <Video className="w-12 h-12 opacity-80" />
+            </div>
+          </div>
+          
+          <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white p-6 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Total Issues</h3>
+                <p className="text-3xl font-bold">
+                  {monthlyIssues.reduce((sum, item) => sum + item.raised, 0)}
+                </p>
+              </div>
+              <TrendingUp className="w-12 h-12 opacity-80" />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-xl font-semibold mb-4">Monthly Misalignments Trend</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={monthlyMisalignments}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="raised" stroke="#8884d8" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-xl font-semibold mb-4">Monthly Alerts Trend</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={monthlyAlerts}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="count" fill="#82ca9d" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMisalignments = () => {
+    const monthlyData = Object.entries(analytics.misalignmentStats.monthlyStats || {})
+      .map(([month, data]) => ({ month, ...data }));
+    
+    const clientData = Object.entries(analytics.misalignmentStats.clientStats || {})
+      .map(([client, months]) => ({
+        client,
+        total: Object.values(months).reduce((sum, data) => sum + data.raised, 0)
+      }));
+
+    const vehicleData = Object.entries(analytics.misalignmentStats.vehicleStats || {})
+      .slice(0, 10)
+      .map(([vehicle, data]) => ({ vehicle, ...data }));
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-xl font-semibold mb-4">Monthly Misalignments</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={monthlyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="raised" fill="#8884d8" name="Raised" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-xl font-semibold mb-4">Client-wise Distribution</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={clientData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ client, value }) => `${client}: ${value}`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="total"
+                >
+                  {clientData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
-                </div>
-              ) : (
-                <div
-                  className="w-12 bg-orange-500 rounded-t mb-2"
-                  style={{
-                    height: `${Math.max(20, ((item.total || 0) / maxValue) * 200)}px`
-                  }}
-                ></div>
-              )}
-              <span className="text-xs text-gray-600 text-center mt-2 transform rotate-12">{item.month}</span>
-            </div>
-          ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+          <h3 className="text-xl font-semibold mb-4">Top Misaligned Vehicles</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={vehicleData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="vehicle" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="count" fill="#ffc658" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
     );
   };
 
-  const renderMisalignmentTab = () => {
-    const currentMonth = getCurrentMonthData(data.misalignment);
-    const totalClients = Object.keys(data.clientStats.misalignment || {}).length;
+  const renderAlerts = () => {
+    const monthlyData = Object.entries(analytics.alertStats.monthlyStats || {})
+      .map(([month, data]) => ({ month, ...data }));
     
+    const clientData = Object.entries(analytics.alertStats.clientStats || {})
+      .map(([client, months]) => ({
+        client,
+        total: Object.values(months).reduce((sum, data) => sum + data.count, 0)
+      }));
+
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <StatCard 
-            title="Monthly Misalignments"
-            value={currentMonth.raised || 0}
-            subtitle="This month"
-            color="#ff7300"
-          />
-          <StatCard 
-            title="Rectified"
-            value={currentMonth.rectified || 0}
-            subtitle="This month"
-            color="#82ca9d"
-          />
-          <StatCard 
-            title="Active Clients"
-            value={totalClients}
-            subtitle="Total clients"
-            color="#8884d8"
-          />
-          <StatCard 
-            title="Resolution Rate"
-            value={currentMonth.raised ? Math.round((currentMonth.rectified / currentMonth.raised) * 100) : 0}
-            subtitle="%"
-            color="#0088fe"
-          />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-xl font-semibold mb-4">Monthly Alerts</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={monthlyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#ff7300" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-xl font-semibold mb-4">Client-wise Alerts</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={clientData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ client, value }) => `${client}: ${value}`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="total"
+                >
+                  {clientData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderVideos = () => {
+    const monthlyData = Object.entries(analytics.videoStats.monthlyStats || {})
+      .map(([month, data]) => ({ month, ...data }));
+    
+    const clientData = Object.entries(analytics.videoStats.clientStats || {})
+      .map(([client, months]) => ({
+        client,
+        total: Object.values(months).reduce((sum, data) => sum + data.count, 0)
+      }));
+
+    const durationStats = getDurationStats(analytics.videoStats.durations || []);
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gradient-to-r from-green-400 to-green-500 text-white p-4 rounded-lg">
+            <h4 className="text-sm font-medium">Fastest Response</h4>
+            <p className="text-2xl font-bold">{durationStats.fastest.toFixed(1)}h</p>
+          </div>
+          <div className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-white p-4 rounded-lg">
+            <h4 className="text-sm font-medium">Average Response</h4>
+            <p className="text-2xl font-bold">{durationStats.average.toFixed(1)}h</p>
+          </div>
+          <div className="bg-gradient-to-r from-red-400 to-red-500 text-white p-4 rounded-lg">
+            <h4 className="text-sm font-medium">Slowest Response</h4>
+            <p className="text-2xl font-bold">{durationStats.slowest.toFixed(1)}h</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-4">Monthly Misalignment Trends</h3>
-            {renderChart(data.misalignment, 'line')}
+            <h3 className="text-xl font-semibold mb-4">Monthly Video Requests</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={monthlyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="raised" fill="#82ca9d" name="Requested" />
+                <Bar dataKey="resolved" fill="#8884d8" name="Delivered" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
 
           <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-4">Client Performance</h3>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {Object.entries(data.clientStats.misalignment || {}).slice(0, 10).map(([client, stats]) => {
-                const latestMonth = Object.keys(stats.monthly || {}).sort().pop();
-                const monthData = stats.monthly && stats.monthly[latestMonth] ? stats.monthly[latestMonth] : { raised: 0 };
-                return (
-                  <div key={client} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                    <div>
-                      <p className="font-medium text-sm">{client}</p>
-                      <p className="text-xs text-gray-500">{stats.vehicles ? stats.vehicles.size : 0} vehicles</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-orange-600">{monthData.raised}</p>
-                      <p className="text-xs text-gray-500">misalignments</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <h3 className="text-xl font-semibold mb-4">Client-wise Video Requests</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={clientData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ client, value }) => `${client}: ${value}`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="total"
+                >
+                  {clientData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
     );
   };
 
-  const renderAlertsTab = () => {
-    const currentMonth = getCurrentMonthData(data.alerts);
-    const totalClients = Object.keys(data.clientStats.alerts || {}).length;
+  const renderIssues = () => {
+    const monthlyData = Object.entries(analytics.issueStats.monthlyStats || {})
+      .map(([month, data]) => ({ month, ...data }));
     
+    const clientData = Object.entries(analytics.issueStats.clientStats || {})
+      .map(([client, months]) => ({
+        client,
+        raised: Object.values(months).reduce((sum, data) => sum + data.raised, 0),
+        resolved: Object.values(months).reduce((sum, data) => sum + data.resolved, 0)
+      }));
+
+    const durationStats = getDurationStats(analytics.issueStats.durations || []);
+
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <StatCard 
-            title="Monthly Alerts"
-            value={currentMonth.total || 0}
-            subtitle="This month (filtered)"
-            color="#ff7300"
-          />
-          <StatCard 
-            title="Active Clients"
-            value={totalClients}
-            subtitle="Generating alerts"
-            color="#8884d8"
-          />
-          <StatCard 
-            title="Daily Average"
-            value={currentMonth.total ? Math.round(currentMonth.total / 30) : 0}
-            subtitle="Alerts per day"
-            color="#82ca9d"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gradient-to-r from-green-400 to-green-500 text-white p-4 rounded-lg">
+            <h4 className="text-sm font-medium">Fastest Resolution</h4>
+            <p className="text-2xl font-bold">{durationStats.fastest.toFixed(1)}h</p>
+          </div>
+          <div className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-white p-4 rounded-lg">
+            <h4 className="text-sm font-medium">Average Resolution</h4>
+            <p className="text-2xl font-bold">{durationStats.average.toFixed(1)}h</p>
+          </div>
+          <div className="bg-gradient-to-r from-red-400 to-red-500 text-white p-4 rounded-lg">
+            <h4 className="text-sm font-medium">Slowest Resolution</h4>
+            <p className="text-2xl font-bold">{durationStats.slowest.toFixed(1)}h</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-4">Monthly Alert Trends</h3>
-            {renderChart(data.alerts, 'bar')}
+            <h3 className="text-xl font-semibold mb-4">Monthly Issues</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={monthlyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="raised" fill="#ff7300" name="Raised" />
+                <Bar dataKey="resolved" fill="#82ca9d" name="Resolved" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
 
           <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-4">Client Alert Distribution</h3>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {Object.entries(data.clientStats.alerts || {}).slice(0, 10).map(([client, stats]) => {
-                const latestMonth = Object.keys(stats.monthly || {}).sort().pop();
-                const monthData = stats.monthly && stats.monthly[latestMonth] ? stats.monthly[latestMonth] : { total: 0 };
-                return (
-                  <div key={client} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                    <div>
-                      <p className="font-medium text-sm">{client}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-orange-600">{monthData.total}</p>
-                      <p className="text-xs text-gray-500">alerts</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <h3 className="text-xl font-semibold mb-4">Client-wise Issues</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={clientData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="client" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="raised" fill="#ff7300" name="Raised" />
+                <Bar dataKey="resolved" fill="#82ca9d" name="Resolved" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
       </div>
     );
   };
 
-  const renderVideosTab = () => {
-    const currentMonth = getCurrentMonthData(data.historicalVideos);
-    
+  if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <StatCard 
-            title="Video Requests"
-            value={currentMonth.requests || 0}
-            subtitle="This month"
-            color="#8884d8"
-          />
-          <StatCard 
-            title="Fastest Delivery"
-            value={currentMonth.fastestTime || 'N/A'}
-            subtitle="Response time"
-            color="#82ca9d"
-          />
-          <StatCard 
-            title="Average Time"
-            value={currentMonth.avgTime || 'N/A'}
-            subtitle="Processing time"
-            color="#ffc658"
-          />
-          <StatCard 
-            title="Slowest Delivery"
-            value={currentMonth.slowestTime || 'N/A'}
-            subtitle="Max response time"
-            color="#ff7300"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-4">Monthly Video Requests</h3>
-            {renderChart(data.historicalVideos.map(item => ({ ...item, total: item.requests })), 'bar')}
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-4">Client Video Requests</h3>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {Object.entries(data.clientStats.videos || {}).slice(0, 10).map(([client, stats]) => {
-                const latestMonth = Object.keys(stats.monthly || {}).sort().pop();
-                const monthData = stats.monthly && stats.monthly[latestMonth] ? stats.monthly[latestMonth] : { requests: 0 };
-                return (
-                  <div key={client} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                    <div>
-                      <p className="font-medium text-sm">{client}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-blue-600">{monthData.requests}</p>
-                      <p className="text-xs text-gray-500">requests</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-xl">Loading dashboard data...</p>
         </div>
       </div>
     );
-  };
-
-  const renderIssuesTab = () => {
-    const currentMonth = getCurrentMonthData(data.issues);
-    const totalClients = Object.keys(data.clientStats.issues || {}).length;
-    const resolutionRate = currentMonth.raised ? Math.round((currentMonth.resolved / currentMonth.raised) * 100) : 0;
-    
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <StatCard 
-            title="Issues Raised"
-            value={currentMonth.raised || 0}
-            subtitle="This month"
-            color="#ff7300"
-          />
-          <StatCard 
-            title="Issues Resolved"
-            value={currentMonth.resolved || 0}
-            subtitle="This month"
-            color="#82ca9d"
-          />
-          <StatCard 
-            title="Resolution Rate"
-            value={resolutionRate}
-            subtitle="%"
-            color="#8884d8"
-          />
-          <StatCard 
-            title="Avg Resolution Time"
-            value={currentMonth.avgResolution || 'N/A'}
-            subtitle="Response time"
-            color="#ffc658"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-4">Monthly Issues Trend</h3>
-            {renderChart(data.issues, 'line')}
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-4">Client Issues</h3>
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {Object.entries(data.clientStats.issues || {}).slice(0, 10).map(([client, stats]) => {
-                const latestMonth = Object.keys(stats.monthly || {}).sort().pop();
-                const monthData = stats.monthly && stats.monthly[latestMonth] ? stats.monthly[latestMonth] : { raised: 0, resolved: 0 };
-                return (
-                  <div key={client} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                    <div>
-                      <p className="font-medium text-sm">{client}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-orange-600">{monthData.raised}</p>
-                      <p className="text-xs text-gray-500">{monthData.resolved} resolved</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  }
 
   return (
-    <>
-      <Head>
-        <title>Fleet Monitoring Dashboard</title>
-        <meta name="description" content="Real-time fleet monitoring and analytics" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </Head>
-
-      <div className="min-h-screen bg-gray-100 p-4">
-        <div className="bg-white shadow-lg rounded-lg p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Fleet Monitoring Dashboard</h1>
-              <p className="text-gray-600 mt-1">Real-time monitoring and analytics</p>
+    <div className="min-h-screen bg-gray-100">
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex items-center">
+              <TrendingUp className="h-8 w-8 text-blue-600 mr-3" />
+              <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
             </div>
             <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <p className="text-sm text-gray-500">Last Updated</p>
-                <p className="text-sm font-medium">{lastUpdated.toLocaleTimeString()}</p>
-              </div>
+              <Clock className="h-5 w-5 text-gray-500" />
+              <span className="text-sm text-gray-500">Last updated: {new Date().toLocaleTimeString()}</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <nav className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex space-x-8">
+            {[
+              { id: 'overview', label: 'Overview', icon: TrendingUp },
+              { id: 'misalignments', label: 'Misalignments', icon: Settings },
+              { id: 'alerts', label: 'Alerts', icon: AlertTriangle },
+              { id: 'videos', label: 'Historical Videos', icon: Video },
+              { id: 'issues', label: 'Issues', icon: Users },
+            ].map(({ id, label, icon: Icon }) => (
               <button
-                onClick={loadAllData}
-                disabled={loading}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium ${
-                  loading 
-                    ? 'bg-gray-300 cursor-not-allowed' 
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={`flex items-center px-3 py-4 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === id
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <div className={`w-4 h-4 border-2 border-white rounded-full ${loading ? 'animate-spin border-t-transparent' : ''}`}></div>
-                <span>{loading ? 'Loading...' : 'Refresh'}</span>
+                <Icon className="w-4 h-4 mr-2" />
+                {label}
               </button>
-            </div>
+            ))}
           </div>
         </div>
+      </nav>
 
-        <div className="bg-white shadow-lg rounded-lg mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="flex space-x-8 px-6">
-              {[
-                { id: 'misalignment', label: 'Misalignment Tracking' },
-                { id: 'alerts', label: 'Alert Tracking' },
-                { id: 'videos', label: 'Historical Videos' },
-                { id: 'issues', label: 'Issues Tracking' }
-              ].map(({ id, label }) => (
-                <button
-                  key={id}
-                  onClick={() => setSelectedTab(id)}
-                  className={`py-4 px-2 border-b-2 font-medium text-sm ${
-                    selectedTab === id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </nav>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          {loading ? (
-            <div className="flex items-center justify-center h-64">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-lg font-medium text-gray-600">Loading data...</p>
-              </div>
-            </div>
-          ) : (
-            <>
-              {selectedTab === 'misalignment' && renderMisalignmentTab()}
-              {selectedTab === 'alerts' && renderAlertsTab()}
-              {selectedTab === 'videos' && renderVideosTab()}
-              {selectedTab === 'issues' && renderIssuesTab()}
-            </>
-          )}
-        </div>
-
-        <div className="mt-8 text-center text-gray-500 text-sm">
-          <p>Data refreshes automatically every 5 minutes | Last refresh: {lastUpdated.toLocaleString()}</p>
-        </div>
-      </div>
-    </>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {activeTab === 'overview' && renderOverview()}
+        {activeTab === 'misalignments' && renderMisalignments()}
+        {activeTab === 'alerts' && renderAlerts()}
+        {activeTab === 'videos' && renderVideos()}
+        {activeTab === 'issues' && renderIssues()}
+      </main>
+    </div>
   );
 };
 
-export default FleetMonitoringDashboard;
+export default Dashboard;
