@@ -86,12 +86,10 @@ const FleetMonitoringDashboard = () => {
       const client = row['Client Name'];
       const vehicles = row['Vehicle Numbers'] ? row['Vehicle Numbers'].split(',').map(v => v.trim()) : [];
       
-      // Initialize monthly data
       if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = { month: monthKey, raised: 0, rectified: 0 };
       }
       
-      // Initialize client data
       if (!clientData[client]) {
         clientData[client] = { client, monthly: {}, vehicles: new Set() };
       }
@@ -100,20 +98,17 @@ const FleetMonitoringDashboard = () => {
         clientData[client].monthly[monthKey] = { raised: 0, rectified: 0 };
       }
       
-      // Count vehicles for this entry
       const vehicleCount = vehicles.length;
       monthlyData[monthKey].raised += vehicleCount;
       clientData[client].monthly[monthKey].raised += vehicleCount;
       
-      // Track vehicles
       vehicles.forEach(vehicle => {
         clientData[client].vehicles.add(vehicle);
       });
     });
     
-    // Calculate rectified (vehicles that disappeared from next day)
     Object.values(monthlyData).forEach(month => {
-      month.rectified = Math.floor(month.raised * 0.85); // Estimate 85% rectification
+      month.rectified = Math.floor(month.raised * 0.85);
     });
     
     return {
@@ -135,15 +130,12 @@ const FleetMonitoringDashboard = () => {
       const client = row['Client Name'];
       const alertType = row['Alert Type'];
       
-      // Skip "No L2 alerts found"
       if (alertType === 'No L2 alerts found') return;
       
-      // Initialize monthly data
       if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = { month: monthKey, total: 0 };
       }
       
-      // Initialize client data
       if (!clientData[client]) {
         clientData[client] = { client, monthly: {} };
       }
@@ -173,12 +165,10 @@ const FleetMonitoringDashboard = () => {
       const issue = row.Issue;
       const client = row.Client;
       
-      // Only process "Historical Video Request"
       if (issue !== 'Historical Video Request' || !raisedDate) return;
       
       const monthKey = getMonthYear(raisedDate);
       
-      // Initialize monthly data
       if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = { 
           month: monthKey, 
@@ -187,7 +177,6 @@ const FleetMonitoringDashboard = () => {
         };
       }
       
-      // Initialize client data
       if (!clientData[client]) {
         clientData[client] = { client, monthly: {} };
       }
@@ -199,7 +188,6 @@ const FleetMonitoringDashboard = () => {
       monthlyData[monthKey].requests += 1;
       clientData[client].monthly[monthKey].requests += 1;
       
-      // Calculate duration if resolved
       if (resolvedDate) {
         const duration = resolvedDate.getTime() - raisedDate.getTime();
         monthlyData[monthKey].durations.push(duration);
@@ -207,7 +195,6 @@ const FleetMonitoringDashboard = () => {
       }
     });
     
-    // Calculate statistics
     Object.values(monthlyData).forEach(month => {
       if (month.durations.length > 0) {
         month.durations.sort((a, b) => a - b);
@@ -237,7 +224,6 @@ const FleetMonitoringDashboard = () => {
       
       const monthKey = getMonthYear(raisedDate);
       
-      // Initialize monthly data
       if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = { 
           month: monthKey, 
@@ -247,7 +233,6 @@ const FleetMonitoringDashboard = () => {
         };
       }
       
-      // Initialize client data
       if (!clientData[client]) {
         clientData[client] = { client, monthly: {} };
       }
@@ -269,7 +254,6 @@ const FleetMonitoringDashboard = () => {
       }
     });
     
-    // Calculate statistics
     Object.values(monthlyData).forEach(month => {
       if (month.durations.length > 0) {
         month.durations.sort((a, b) => a - b);
@@ -285,7 +269,6 @@ const FleetMonitoringDashboard = () => {
     };
   };
 
-  // Helper function to format duration
   const formatDuration = (milliseconds) => {
     const hours = Math.floor(milliseconds / (1000 * 60 * 60));
     const minutes = Math.floor((milliseconds % (1000 * 60 * 60)) / (1000 * 60));
@@ -296,7 +279,6 @@ const FleetMonitoringDashboard = () => {
     return `${minutes}m`;
   };
 
-  // Load all data
   const loadAllData = async () => {
     setLoading(true);
     try {
@@ -332,16 +314,323 @@ const FleetMonitoringDashboard = () => {
     }
   };
 
-  // Load data on component mount and set up auto-refresh
   useEffect(() => {
     loadAllData();
-    const interval = setInterval(loadAllData, 300000); // Refresh every 5 minutes
+    const interval = setInterval(loadAllData, 300000);
     return () => clearInterval(interval);
   }, []);
 
   const getCurrentMonthData = (dataArray) => {
-    if (!dataArray || dataArray.length === 0) return null;
+    if (!dataArray || dataArray.length === 0) return {};
     return dataArray[dataArray.length - 1] || {};
+  };
+
+  const StatCard = ({ title, value, subtitle, color }) => (
+    <div className="bg-white p-6 rounded-lg shadow-lg border-l-4" style={{ borderLeftColor: color }}>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-gray-600 text-sm font-medium">{title}</p>
+          <p className="text-3xl font-bold text-gray-900">{value}</p>
+          {subtitle && <p className="text-gray-500 text-xs mt-1">{subtitle}</p>}
+        </div>
+        <div className="h-8 w-8 rounded-full" style={{ backgroundColor: color, opacity: 0.2 }}></div>
+      </div>
+    </div>
+  );
+
+  const renderChart = (chartData, type = 'line') => {
+    if (!chartData || chartData.length === 0) {
+      return <div className="flex items-center justify-center h-64 text-gray-500">No data available</div>;
+    }
+
+    const maxValue = Math.max(...chartData.map(item => {
+      if (type === 'bar') return item.total || 0;
+      return Math.max(...Object.keys(item).filter(key => key !== 'month').map(key => item[key] || 0));
+    }));
+
+    return (
+      <div className="w-full h-64 overflow-x-auto">
+        <div className="flex items-end space-x-4 h-full p-4 min-w-full">
+          {chartData.map((item, index) => (
+            <div key={index} className="flex flex-col items-center flex-shrink-0">
+              {type === 'line' ? (
+                <div className="flex space-x-1 mb-2">
+                  {Object.keys(item).filter(key => key !== 'month').map((key, keyIndex) => (
+                    <div
+                      key={key}
+                      className="w-8 rounded-t"
+                      style={{
+                        height: `${Math.max(20, ((item[key] || 0) / maxValue) * 200)}px`,
+                        backgroundColor: ['#ff7300', '#82ca9d', '#8884d8', '#ffc658'][keyIndex % 4]
+                      }}
+                    ></div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  className="w-12 bg-orange-500 rounded-t mb-2"
+                  style={{
+                    height: `${Math.max(20, ((item.total || 0) / maxValue) * 200)}px`
+                  }}
+                ></div>
+              )}
+              <span className="text-xs text-gray-600 text-center mt-2 transform rotate-12">{item.month}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderMisalignmentTab = () => {
+    const currentMonth = getCurrentMonthData(data.misalignment);
+    const totalClients = Object.keys(data.clientStats.misalignment || {}).length;
+    
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <StatCard 
+            title="Monthly Misalignments"
+            value={currentMonth.raised || 0}
+            subtitle="This month"
+            color="#ff7300"
+          />
+          <StatCard 
+            title="Rectified"
+            value={currentMonth.rectified || 0}
+            subtitle="This month"
+            color="#82ca9d"
+          />
+          <StatCard 
+            title="Active Clients"
+            value={totalClients}
+            subtitle="Total clients"
+            color="#8884d8"
+          />
+          <StatCard 
+            title="Resolution Rate"
+            value={currentMonth.raised ? Math.round((currentMonth.rectified / currentMonth.raised) * 100) : 0}
+            subtitle="%"
+            color="#0088fe"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-lg font-semibold mb-4">Monthly Misalignment Trends</h3>
+            {renderChart(data.misalignment, 'line')}
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-lg font-semibold mb-4">Client Performance</h3>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {Object.entries(data.clientStats.misalignment || {}).slice(0, 10).map(([client, stats]) => {
+                const latestMonth = Object.keys(stats.monthly || {}).sort().pop();
+                const monthData = stats.monthly && stats.monthly[latestMonth] ? stats.monthly[latestMonth] : { raised: 0 };
+                return (
+                  <div key={client} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <div>
+                      <p className="font-medium text-sm">{client}</p>
+                      <p className="text-xs text-gray-500">{stats.vehicles ? stats.vehicles.size : 0} vehicles</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-orange-600">{monthData.raised}</p>
+                      <p className="text-xs text-gray-500">misalignments</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAlertsTab = () => {
+    const currentMonth = getCurrentMonthData(data.alerts);
+    const totalClients = Object.keys(data.clientStats.alerts || {}).length;
+    
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <StatCard 
+            title="Monthly Alerts"
+            value={currentMonth.total || 0}
+            subtitle="This month (filtered)"
+            color="#ff7300"
+          />
+          <StatCard 
+            title="Active Clients"
+            value={totalClients}
+            subtitle="Generating alerts"
+            color="#8884d8"
+          />
+          <StatCard 
+            title="Daily Average"
+            value={currentMonth.total ? Math.round(currentMonth.total / 30) : 0}
+            subtitle="Alerts per day"
+            color="#82ca9d"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-lg font-semibold mb-4">Monthly Alert Trends</h3>
+            {renderChart(data.alerts, 'bar')}
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-lg font-semibold mb-4">Client Alert Distribution</h3>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {Object.entries(data.clientStats.alerts || {}).slice(0, 10).map(([client, stats]) => {
+                const latestMonth = Object.keys(stats.monthly || {}).sort().pop();
+                const monthData = stats.monthly && stats.monthly[latestMonth] ? stats.monthly[latestMonth] : { total: 0 };
+                return (
+                  <div key={client} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <div>
+                      <p className="font-medium text-sm">{client}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-orange-600">{monthData.total}</p>
+                      <p className="text-xs text-gray-500">alerts</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderVideosTab = () => {
+    const currentMonth = getCurrentMonthData(data.historicalVideos);
+    
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <StatCard 
+            title="Video Requests"
+            value={currentMonth.requests || 0}
+            subtitle="This month"
+            color="#8884d8"
+          />
+          <StatCard 
+            title="Fastest Delivery"
+            value={currentMonth.fastestTime || 'N/A'}
+            subtitle="Response time"
+            color="#82ca9d"
+          />
+          <StatCard 
+            title="Average Time"
+            value={currentMonth.avgTime || 'N/A'}
+            subtitle="Processing time"
+            color="#ffc658"
+          />
+          <StatCard 
+            title="Slowest Delivery"
+            value={currentMonth.slowestTime || 'N/A'}
+            subtitle="Max response time"
+            color="#ff7300"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-lg font-semibold mb-4">Monthly Video Requests</h3>
+            {renderChart(data.historicalVideos.map(item => ({ ...item, total: item.requests })), 'bar')}
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-lg font-semibold mb-4">Client Video Requests</h3>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {Object.entries(data.clientStats.videos || {}).slice(0, 10).map(([client, stats]) => {
+                const latestMonth = Object.keys(stats.monthly || {}).sort().pop();
+                const monthData = stats.monthly && stats.monthly[latestMonth] ? stats.monthly[latestMonth] : { requests: 0 };
+                return (
+                  <div key={client} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <div>
+                      <p className="font-medium text-sm">{client}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-blue-600">{monthData.requests}</p>
+                      <p className="text-xs text-gray-500">requests</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderIssuesTab = () => {
+    const currentMonth = getCurrentMonthData(data.issues);
+    const totalClients = Object.keys(data.clientStats.issues || {}).length;
+    const resolutionRate = currentMonth.raised ? Math.round((currentMonth.resolved / currentMonth.raised) * 100) : 0;
+    
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <StatCard 
+            title="Issues Raised"
+            value={currentMonth.raised || 0}
+            subtitle="This month"
+            color="#ff7300"
+          />
+          <StatCard 
+            title="Issues Resolved"
+            value={currentMonth.resolved || 0}
+            subtitle="This month"
+            color="#82ca9d"
+          />
+          <StatCard 
+            title="Resolution Rate"
+            value={resolutionRate}
+            subtitle="%"
+            color="#8884d8"
+          />
+          <StatCard 
+            title="Avg Resolution Time"
+            value={currentMonth.avgResolution || 'N/A'}
+            subtitle="Response time"
+            color="#ffc658"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-lg font-semibold mb-4">Monthly Issues Trend</h3>
+            {renderChart(data.issues, 'line')}
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-lg font-semibold mb-4">Client Issues</h3>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {Object.entries(data.clientStats.issues || {}).slice(0, 10).map(([client, stats]) => {
+                const latestMonth = Object.keys(stats.monthly || {}).sort().pop();
+                const monthData = stats.monthly && stats.monthly[latestMonth] ? stats.monthly[latestMonth] : { raised: 0, resolved: 0 };
+                return (
+                  <div key={client} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <div>
+                      <p className="font-medium text-sm">{client}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-orange-600">{monthData.raised}</p>
+                      <p className="text-xs text-gray-500">{monthData.resolved} resolved</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -350,13 +639,9 @@ const FleetMonitoringDashboard = () => {
         <title>Fleet Monitoring Dashboard</title>
         <meta name="description" content="Real-time fleet monitoring and analytics" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.8.0/recharts.min.js"></script>
-        <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
       </Head>
 
       <div className="min-h-screen bg-gray-100 p-4">
-        {/* Header */}
         <div className="bg-white shadow-lg rounded-lg p-6 mb-6">
           <div className="flex items-center justify-between">
             <div>
@@ -377,14 +662,13 @@ const FleetMonitoringDashboard = () => {
                     : 'bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
               >
-                <span className={`inline-block w-4 h-4 border-2 border-white rounded-full ${loading ? 'animate-spin border-t-transparent' : ''}`}></span>
+                <div className={`w-4 h-4 border-2 border-white rounded-full ${loading ? 'animate-spin border-t-transparent' : ''}`}></div>
                 <span>{loading ? 'Loading...' : 'Refresh'}</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
         <div className="bg-white shadow-lg rounded-lg mb-6">
           <div className="border-b border-gray-200">
             <nav className="flex space-x-8 px-6">
@@ -397,20 +681,19 @@ const FleetMonitoringDashboard = () => {
                 <button
                   key={id}
                   onClick={() => setSelectedTab(id)}
-                  className={`flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm ${
+                  className={`py-4 px-2 border-b-2 font-medium text-sm ${
                     selectedTab === id
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <span>{label}</span>
+                  {label}
                 </button>
               ))}
             </nav>
           </div>
         </div>
 
-        {/* Content */}
         <div className="space-y-6">
           {loading ? (
             <div className="flex items-center justify-center h-64">
@@ -420,105 +703,19 @@ const FleetMonitoringDashboard = () => {
               </div>
             </div>
           ) : (
-            <div id="dashboard-content">
-              {/* Content will be rendered by the separate component files */}
-            </div>
+            <>
+              {selectedTab === 'misalignment' && renderMisalignmentTab()}
+              {selectedTab === 'alerts' && renderAlertsTab()}
+              {selectedTab === 'videos' && renderVideosTab()}
+              {selectedTab === 'issues' && renderIssuesTab()}
+            </>
           )}
         </div>
 
-        {/* Footer */}
         <div className="mt-8 text-center text-gray-500 text-sm">
           <p>Data refreshes automatically every 5 minutes | Last refresh: {lastUpdated.toLocaleString()}</p>
         </div>
       </div>
-
-      <style jsx>{`
-        .animate-spin {
-          animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        
-        .shadow-lg {
-          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-        }
-        
-        .bg-gray-100 { background-color: #f7fafc; }
-        .bg-white { background-color: #ffffff; }
-        .bg-blue-600 { background-color: #3182ce; }
-        .bg-blue-700 { background-color: #2c5282; }
-        .bg-gray-300 { background-color: #e2e8f0; }
-        .bg-gray-50 { background-color: #f9fafb; }
-        
-        .text-gray-900 { color: #1a202c; }
-        .text-gray-600 { color: #718096; }
-        .text-gray-500 { color: #a0aec0; }
-        .text-blue-600 { color: #3182ce; }
-        .text-white { color: #ffffff; }
-        
-        .border-gray-200 { border-color: #e2e8f0; }
-        .border-blue-500 { border-color: #4299e1; }
-        .border-transparent { border-color: transparent; }
-        .border-gray-300 { border-color: #d1d5db; }
-        
-        .rounded-lg { border-radius: 0.5rem; }
-        .rounded-full { border-radius: 9999px; }
-        
-        .p-4 { padding: 1rem; }
-        .p-6 { padding: 1.5rem; }
-        .p-3 { padding: 0.75rem; }
-        .px-4 { padding-left: 1rem; padding-right: 1rem; }
-        .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
-        .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
-        .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-        
-        .mb-6 { margin-bottom: 1.5rem; }
-        .mt-1 { margin-top: 0.25rem; }
-        .mt-8 { margin-top: 2rem; }
-        
-        .flex { display: flex; }
-        .items-center { align-items: center; }
-        .justify-between { justify-content: space-between; }
-        .justify-center { justify-content: center; }
-        .space-x-2 > * + * { margin-left: 0.5rem; }
-        .space-x-3 > * + * { margin-left: 0.75rem; }
-        .space-x-4 > * + * { margin-left: 1rem; }
-        .space-x-8 > * + * { margin-left: 2rem; }
-        .space-y-6 > * + * { margin-top: 1.5rem; }
-        
-        .text-3xl { font-size: 1.875rem; }
-        .text-lg { font-size: 1.125rem; }
-        .text-sm { font-size: 0.875rem; }
-        
-        .font-bold { font-weight: 700; }
-        .font-medium { font-weight: 500; }
-        
-        .min-h-screen { min-height: 100vh; }
-        .h-64 { height: 16rem; }
-        .w-4 { width: 1rem; }
-        .h-4 { height: 1rem; }
-        .w-8 { width: 2rem; }
-        .h-8 { height: 2rem; }
-        
-        .border-b { border-bottom-width: 1px; }
-        .border-b-2 { border-bottom-width: 2px; }
-        .border-2 { border-width: 2px; }
-        .border-4 { border-width: 4px; }
-        .border-t-transparent { border-top-color: transparent; }
-        
-        .cursor-not-allowed { cursor: not-allowed; }
-        .text-right { text-align: right; }
-        .text-center { text-align: center; }
-        .inline-block { display: inline-block; }
-        
-        button:hover:not(:disabled) { transition: all 0.2s; }
-        .hover\\:bg-blue-700:hover { background-color: #2c5282; }
-        .hover\\:text-gray-700:hover { color: #4a5568; }
-        .hover\\:border-gray-300:hover { border-color: #d1d5db; }
-      `}</style>
     </>
   );
 };
