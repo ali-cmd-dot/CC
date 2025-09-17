@@ -57,6 +57,9 @@
                     <button class="tab" data-tab="misalignments">
                         <i class="fas fa-car"></i> Misalignments
                     </button>
+                    <button class="tab" data-tab="alerts">
+                        <i class="fas fa-bell"></i> Alerts
+                    </button>
                     <button class="tab" data-tab="videos">
                         <i class="fas fa-video"></i> Video Requests
                     </button>
@@ -103,6 +106,19 @@
                         <div class="stat-card yellow">
                             <div class="stat-content">
                                 <div class="stat-info">
+                                    <h3>Total Alerts</h3>
+                                    <p class="stat-value" id="total-alerts">0</p>
+                                    <span class="stat-subtitle">Excluding L2</span>
+                                </div>
+                                <div class="stat-icon">
+                                    <i class="fas fa-bell"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="stat-card purple">
+                            <div class="stat-content">
+                                <div class="stat-info">
                                     <h3>Total Issues</h3>
                                     <p class="stat-value" id="total-issues">0</p>
                                     <span class="stat-subtitle">All categories</span>
@@ -116,25 +132,12 @@
                         <div class="stat-card green">
                             <div class="stat-content">
                                 <div class="stat-info">
-                                    <h3>Avg Response Time</h3>
-                                    <p class="stat-value" id="avg-response">0h</p>
-                                    <span class="stat-subtitle">Video requests</span>
+                                    <h3>Avg Video Delivery</h3>
+                                    <p class="stat-value" id="avg-response">0 min</p>
+                                    <span class="stat-subtitle">Response time</span>
                                 </div>
                                 <div class="stat-icon">
                                     <i class="fas fa-clock"></i>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="stat-card purple">
-                            <div class="stat-content">
-                                <div class="stat-info">
-                                    <h3>Avg Resolution Time</h3>
-                                    <p class="stat-value" id="avg-resolution">0h</p>
-                                    <span class="stat-subtitle">Issues</span>
-                                </div>
-                                <div class="stat-icon">
-                                    <i class="fas fa-chart-line"></i>
                                 </div>
                             </div>
                         </div>
@@ -143,9 +146,45 @@
                     <!-- Monthly Trends Chart -->
                     <div class="chart-container">
                         <div class="chart-header">
-                            <h3><i class="fas fa-chart-line"></i> Monthly Trends</h3>
+                            <h3><i class="fas fa-chart-line"></i> Monthly Performance Overview</h3>
                         </div>
                         <canvas id="overview-chart"></canvas>
+                    </div>
+
+                    <!-- Performance Summary -->
+                    <div class="charts-row">
+                        <div class="chart-container half">
+                            <div class="chart-header">
+                                <h3><i class="fas fa-chart-pie"></i> Monthly Distribution</h3>
+                            </div>
+                            <canvas id="overview-pie-chart"></canvas>
+                        </div>
+
+                        <div class="chart-container half">
+                            <div class="chart-header">
+                                <h3><i class="fas fa-chart-bar"></i> Resolution Rates</h3>
+                            </div>
+                            <canvas id="overview-resolution-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alerts Tab -->
+                <div id="alerts-tab" class="tab-content">
+                    <div class="charts-row">
+                        <div class="chart-container half">
+                            <div class="chart-header">
+                                <h3><i class="fas fa-chart-bar"></i> Monthly Alerts</h3>
+                            </div>
+                            <canvas id="alerts-chart"></canvas>
+                        </div>
+
+                        <div class="chart-container half">
+                            <div class="chart-header">
+                                <h3><i class="fas fa-users"></i> Top Clients by Alerts</h3>
+                            </div>
+                            <div id="alert-clients" class="client-list"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -195,8 +234,8 @@
                         <div class="stat-card green">
                             <div class="stat-content">
                                 <div class="stat-info">
-                                    <h3>Fastest Response</h3>
-                                    <p class="stat-value" id="fastest-response">0h</p>
+                                    <h3>Fastest Delivered</h3>
+                                    <p class="stat-value" id="fastest-response">0 min</p>
                                 </div>
                                 <div class="stat-icon">
                                     <i class="fas fa-bolt"></i>
@@ -207,8 +246,8 @@
                         <div class="stat-card blue">
                             <div class="stat-content">
                                 <div class="stat-info">
-                                    <h3>Median Response</h3>
-                                    <p class="stat-value" id="median-response">0h</p>
+                                    <h3>Average Delivery Time</h3>
+                                    <p class="stat-value" id="median-response">0 min</p>
                                 </div>
                                 <div class="stat-icon">
                                     <i class="fas fa-clock"></i>
@@ -219,8 +258,8 @@
                         <div class="stat-card red">
                             <div class="stat-content">
                                 <div class="stat-info">
-                                    <h3>Slowest Response</h3>
-                                    <p class="stat-value" id="slowest-response">0h</p>
+                                    <h3>Slowest Delivered</h3>
+                                    <p class="stat-value" id="slowest-response">0 min</p>
                                 </div>
                                 <div class="stat-icon">
                                     <i class="fas fa-hourglass-end"></i>
@@ -253,8 +292,8 @@
                         <div class="stat-card green">
                             <div class="stat-content">
                                 <div class="stat-info">
-                                    <h3>Fastest Resolution</h3>
-                                    <p class="stat-value" id="fastest-resolution">0h</p>
+                                    <h3>Fastest Resolved</h3>
+                                    <p class="stat-value" id="fastest-resolution">0 min</p>
                                 </div>
                                 <div class="stat-icon">
                                     <i class="fas fa-bolt"></i>
@@ -265,8 +304,8 @@
                         <div class="stat-card blue">
                             <div class="stat-content">
                                 <div class="stat-info">
-                                    <h3>Median Resolution</h3>
-                                    <p class="stat-value" id="median-resolution">0h</p>
+                                    <h3>Average Resolution Time</h3>
+                                    <p class="stat-value" id="median-resolution">0 min</p>
                                 </div>
                                 <div class="stat-icon">
                                     <i class="fas fa-clock"></i>
@@ -277,8 +316,8 @@
                         <div class="stat-card red">
                             <div class="stat-content">
                                 <div class="stat-info">
-                                    <h3>Slowest Resolution</h3>
-                                    <p class="stat-value" id="slowest-resolution">0h</p>
+                                    <h3>Slowest Resolved</h3>
+                                    <p class="stat-value" id="slowest-resolution">0 min</p>
                                 </div>
                                 <div class="stat-icon">
                                     <i class="fas fa-hourglass-end"></i>
