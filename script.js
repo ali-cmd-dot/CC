@@ -1,4 +1,214 @@
-// Dashboard JavaScript
+createOverviewChart() {
+        const ctx = document.getElementById('overview-chart');
+        if (!ctx) return;
+        
+        // Combine all data for overview
+        const misalignmentData = this.data.misalignments.monthly;
+        const videoData = this.data.videoRequests.monthly;
+        const issuesData = this.data.issues.monthly;
+        const alertsData = this.data.alerts.monthly;
+        
+        // Get all unique months
+        const allMonths = [...new Set([
+            ...misalignmentData.map(d => d.month),
+            ...videoData.map(d => d.month),
+            ...issuesData.map(d => d.month),
+            ...alertsData.map(d => d.month)
+        ])].sort();
+        
+        // Prepare data for each month
+        const chartData = allMonths.map(month => {
+            const misalignment = misalignmentData.find(d => d.month === month) || { raised: 0 };
+            const video = videoData.find(d => d.month === month) || { requests: 0 };
+            const issue = issuesData.find(d => d.month === month) || { raised: 0 };
+            const alert = alertsData.find(d => d.month === month) || { alerts: 0 };
+            
+            return {
+                month,
+                misalignments: misalignment.raised,
+                videos: video.requests,
+                issues: issue.raised,
+                alerts: alert.alerts
+            };
+        });
+        
+        this.charts.overview = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.map(item => item.month),
+                datasets: [
+                    {
+                        label: 'Misalignments',
+                        data: chartData.map(item => item.misalignments),
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        tension: 0.4,
+                        fill: false
+                    },
+                    {
+                        label: 'Video Requests',
+                        data: chartData.map(item => item.videos),
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        tension: 0.4,
+                        fill: false
+                    },
+                    {
+                        label: 'Issues',
+                        data: chartData.map(item => item.issues),
+                        borderColor: '#f39c12',
+                        backgroundColor: 'rgba(243, 156, 18, 0.1)',
+                        tension: 0.4,
+                        fill: false
+                    },
+                    {
+                        label: 'Alerts',
+                        data: chartData.map(item => item.alerts),
+                        borderColor: '#9b59b6',
+                        backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                        tension: 0.4,
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+    
+    createAlertsChart() {
+        const ctx = document.getElementById('alerts-chart');
+        if (!ctx) return;
+        
+        const data = this.data.alerts.monthly;
+        
+        this.charts.alerts = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(item => item.month),
+                datasets: [
+                    {
+                        label: 'Alerts',
+                        data: data.map(item => item.alerts),
+                        backgroundColor: '#9b59b6',
+                        borderColor: '#8e44ad',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+    
+    createOverviewPieChart() {
+        const ctx = document.getElementById('overview-pie-chart');
+        if (!ctx) return;
+        
+        const { summaryStats } = this.data;
+        
+        this.charts.overviewPie = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Misalignments', 'Video Requests', 'Issues', 'Alerts'],
+                datasets: [{
+                    data: [
+                        summaryStats.totalMisalignments || 0,
+                        summaryStats.totalVideoRequests || 0,
+                        summaryStats.totalIssues || 0,
+                        summaryStats.totalAlerts || 0
+                    ],
+                    backgroundColor: ['#e74c3c', '#3498db', '#f39c12', '#9b59b6'],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    }
+                }
+            }
+        });
+    }
+    
+    createOverviewResolutionChart() {
+        const ctx = document.getElementById('overview-resolution-chart');
+        if (!ctx) return;
+        
+        const misalignmentResolved = this.data.misalignments.monthly.reduce((sum, item) => sum + item.resolved, 0);
+        const misalignmentTotal = this.data.misalignments.monthly.reduce((sum, item) => sum + item.raised, 0);
+        
+        const issuesResolved = this.data.issues.monthly.reduce((sum, item) => sum + item.resolved, 0);
+        const issuesTotal = this.data.issues.monthly.reduce((sum, item) => sum + item.raised, 0);
+        
+        const videoDelivered = this.data.videoRequests.monthly.reduce((sum, item) => sum + item.resolved, 0);
+        const videoTotal = this.data.videoRequests.monthly.reduce((sum, item) => sum + item.requests, 0);
+        
+        this.charts.overviewResolution = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Misalignments', 'Issues', 'Video Requests'],
+                datasets: [
+                    {
+                        label: 'Total',
+                        data: [misalignmentTotal, issuesTotal, videoTotal],
+                        backgroundColor: ['rgba(231, 76, 60, 0.3)', 'rgba(243, 156, 18, 0.3)', 'rgba(52, 152, 219, 0.3)'],
+                        borderColor: ['#e74c3c', '#f39c12', '#3498db'],
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Resolved/Delivered',
+                        data: [misalignmentResolved, issuesResolved, videoDelivered],
+                        backgroundColor: ['#e74c3c', '#f39c12', '#3498db'],
+                        borderColor: ['#c0392b', '#e67e22', '#2980b9'],
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,// Dashboard JavaScript
 class VehicleMonitoringDashboard {
     constructor() {
         this.API_KEY = 'AIzaSyACruF4Qmzod8c0UlwfsBZlujoKguKsFDM';
@@ -11,6 +221,7 @@ class VehicleMonitoringDashboard {
             misalignments: { monthly: [], byClient: {}, vehicleRepeats: {} },
             videoRequests: { monthly: [], byClient: {}, responseStats: { fastest: 0, median: 0, slowest: 0 } },
             issues: { monthly: [], byClient: {}, resolutionStats: { fastest: 0, median: 0, slowest: 0 } },
+            alerts: { monthly: [], byClient: {} },
             summaryStats: {}
         };
         
@@ -162,9 +373,77 @@ class VehicleMonitoringDashboard {
         return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
     }
     
-    calculateDuration(startDate, endDate) {
-        if (!startDate || !endDate) return 0;
-        return Math.abs(endDate - startDate) / (1000 * 60 * 60); // Hours
+    formatDuration(hours) {
+        if (hours === 0) return '0 min';
+        
+        const totalMinutes = Math.round(hours * 60);
+        
+        // If less than 60 minutes, show in minutes
+        if (totalMinutes < 60) {
+            return `${totalMinutes} min`;
+        }
+        
+        // If less than 24 hours, show in hours and minutes
+        if (hours < 24) {
+            const hrs = Math.floor(hours);
+            const mins = Math.round((hours - hrs) * 60);
+            if (mins === 0) {
+                return `${hrs}h`;
+            }
+            return `${hrs}h ${mins}m`;
+        }
+        
+        // If more than 24 hours, show in days and hours
+        const days = Math.floor(hours / 24);
+        const remainingHours = Math.round(hours % 24);
+        if (remainingHours === 0) {
+            return `${days} day${days > 1 ? 's' : ''}`;
+        }
+        return `${days} day${days > 1 ? 's' : ''} ${remainingHours}h`;
+    }
+
+    processAlertsData(rawData) {
+        if (!rawData || rawData.length < 2) return { monthly: [], byClient: {} };
+        
+        const [headers, ...rows] = rawData;
+        const monthlyData = {};
+        const clientData = {};
+        
+        // Find Alert Type column index (should be around column H or I)
+        const alertTypeIndex = headers.findIndex(header => 
+            header && header.toLowerCase().includes('alert') && header.toLowerCase().includes('type')
+        );
+        
+        rows.forEach(row => {
+            const raisedDate = this.parseDate(row[5]); // Timestamp Issues Raised
+            const client = row[2] || 'Unknown';
+            const alertType = row[alertTypeIndex] || '';
+            
+            // Skip if no date or if it's "No L2 alerts found"
+            if (!raisedDate || alertType.toLowerCase().includes('no l2 alerts found')) return;
+            
+            const monthKey = this.getMonthYear(raisedDate);
+            if (!monthKey) return;
+            
+            // Initialize data structures
+            if (!monthlyData[monthKey]) {
+                monthlyData[monthKey] = { month: monthKey, alerts: 0 };
+            }
+            if (!clientData[client]) {
+                clientData[client] = {};
+            }
+            if (!clientData[client][monthKey]) {
+                clientData[client][monthKey] = { alerts: 0 };
+            }
+            
+            monthlyData[monthKey].alerts++;
+            clientData[client][monthKey].alerts++;
+        });
+        
+        return {
+            monthly: Object.values(monthlyData),
+            byClient: clientData
+        };
     }
     
     processMisalignmentData(rawData) {
@@ -349,20 +628,24 @@ class VehicleMonitoringDashboard {
             const processedMisalignment = this.processMisalignmentData(misalignmentData);
             const processedVideoRequests = this.processVideoRequestData(issuesData);
             const processedIssues = this.processIssuesData(issuesData);
+            const processedAlerts = this.processAlertsData(issuesData);
             
             // Calculate summary statistics
             const totalMisalignments = processedMisalignment.monthly.reduce((sum, item) => sum + item.raised, 0);
             const totalVideoRequests = processedVideoRequests.monthly.reduce((sum, item) => sum + item.requests, 0);
             const totalIssues = processedIssues.monthly.reduce((sum, item) => sum + item.raised, 0);
+            const totalAlerts = processedAlerts.monthly.reduce((sum, item) => sum + item.alerts, 0);
             
             this.data = {
                 misalignments: processedMisalignment,
                 videoRequests: processedVideoRequests,
                 issues: processedIssues,
+                alerts: processedAlerts,
                 summaryStats: {
                     totalMisalignments,
                     totalVideoRequests,
                     totalIssues,
+                    totalAlerts,
                     avgResponseTime: processedVideoRequests.responseStats.median,
                     avgResolutionTime: processedIssues.resolutionStats.median
                 }
@@ -389,19 +672,19 @@ class VehicleMonitoringDashboard {
         // Overview stats
         document.getElementById('total-misalignments').textContent = summaryStats.totalMisalignments?.toLocaleString() || '0';
         document.getElementById('total-videos').textContent = summaryStats.totalVideoRequests?.toLocaleString() || '0';
+        document.getElementById('total-alerts').textContent = summaryStats.totalAlerts?.toLocaleString() || '0';
         document.getElementById('total-issues').textContent = summaryStats.totalIssues?.toLocaleString() || '0';
-        document.getElementById('avg-response').textContent = `${(summaryStats.avgResponseTime || 0).toFixed(1)}h`;
-        document.getElementById('avg-resolution').textContent = `${(summaryStats.avgResolutionTime || 0).toFixed(1)}h`;
+        document.getElementById('avg-response').textContent = this.formatDuration(summaryStats.avgResponseTime || 0);
         
         // Video request stats
-        document.getElementById('fastest-response').textContent = `${(videoRequests.responseStats.fastest || 0).toFixed(1)}h`;
-        document.getElementById('median-response').textContent = `${(videoRequests.responseStats.median || 0).toFixed(1)}h`;
-        document.getElementById('slowest-response').textContent = `${(videoRequests.responseStats.slowest || 0).toFixed(1)}h`;
+        document.getElementById('fastest-response').textContent = this.formatDuration(videoRequests.responseStats.fastest || 0);
+        document.getElementById('median-response').textContent = this.formatDuration(videoRequests.responseStats.median || 0);
+        document.getElementById('slowest-response').textContent = this.formatDuration(videoRequests.responseStats.slowest || 0);
         
         // Issue resolution stats
-        document.getElementById('fastest-resolution').textContent = `${(issues.resolutionStats.fastest || 0).toFixed(1)}h`;
-        document.getElementById('median-resolution').textContent = `${(issues.resolutionStats.median || 0).toFixed(1)}h`;
-        document.getElementById('slowest-resolution').textContent = `${(issues.resolutionStats.slowest || 0).toFixed(1)}h`;
+        document.getElementById('fastest-resolution').textContent = this.formatDuration(issues.resolutionStats.fastest || 0);
+        document.getElementById('median-resolution').textContent = this.formatDuration(issues.resolutionStats.median || 0);
+        document.getElementById('slowest-resolution').textContent = this.formatDuration(issues.resolutionStats.slowest || 0);
     }
     
     updateCharts() {
@@ -411,13 +694,18 @@ class VehicleMonitoringDashboard {
         });
         this.charts = {};
         
-        // Overview Chart
+        // Overview Charts
         this.createOverviewChart();
+        this.createOverviewPieChart();
+        this.createOverviewResolutionChart();
+        
+        // Alerts Chart
+        this.createAlertsChart();
         
         // Misalignment Chart
         this.createMisalignmentChart();
         
-        // Video Requests Chart
+        // Video Requests Chart (now single chart since no requests vs resolved)
         this.createVideoRequestsChart();
         
         // Issues Chart
@@ -526,18 +814,10 @@ class VehicleMonitoringDashboard {
                 labels: data.map(item => item.month),
                 datasets: [
                     {
-                        label: 'Requests',
+                        label: 'Video Requests',
                         data: data.map(item => item.requests),
                         borderColor: '#3498db',
                         backgroundColor: 'rgba(52, 152, 219, 0.2)',
-                        tension: 0.4,
-                        fill: true
-                    },
-                    {
-                        label: 'Resolved',
-                        data: data.map(item => item.resolved),
-                        borderColor: '#27ae60',
-                        backgroundColor: 'rgba(39, 174, 96, 0.2)',
                         tension: 0.4,
                         fill: true
                     }
@@ -632,6 +912,28 @@ class VehicleMonitoringDashboard {
             }).join('');
         }
         
+        // Alert clients
+        const alertClientsContainer = document.getElementById('alert-clients');
+        if (alertClientsContainer) {
+            const clientData = Object.entries(this.data.alerts.byClient || {})
+                .sort(([,a], [,b]) => {
+                    const aTotal = Object.values(a).reduce((sum, month) => sum + month.alerts, 0);
+                    const bTotal = Object.values(b).reduce((sum, month) => sum + month.alerts, 0);
+                    return bTotal - aTotal;
+                })
+                .slice(0, 10);
+            
+            alertClientsContainer.innerHTML = clientData.map(([client, months]) => {
+                const total = Object.values(months).reduce((sum, month) => sum + month.alerts, 0);
+                return `
+                    <div class="client-item">
+                        <span class="client-name">${client}</span>
+                        <span class="client-count text-purple">${total}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+        
         // Video request clients
         const videoClientsContainer = document.getElementById('video-clients');
         if (videoClientsContainer) {
@@ -644,15 +946,10 @@ class VehicleMonitoringDashboard {
             
             videoClientsContainer.innerHTML = clientData.map(([client, months]) => {
                 const total = Object.values(months).reduce((sum, month) => sum + month.requests, 0);
-                const resolved = Object.values(months).reduce((sum, month) => sum + month.resolved, 0);
-                const percentage = total > 0 ? ((resolved / total) * 100).toFixed(1) : 0;
                 return `
                     <div class="client-item">
                         <span class="client-name">${client}</span>
-                        <div class="client-stats">
-                            <span class="client-count text-blue">${total}</span>
-                            <span class="client-percentage">(${percentage}% resolved)</span>
-                        </div>
+                        <span class="client-count text-blue">${total}</span>
                     </div>
                 `;
             }).join('');
