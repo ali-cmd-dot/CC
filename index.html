@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Professional Tracking Dashboard</title>
+    <title>Monthly Tracking Dashboard</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 </head>
@@ -12,9 +12,9 @@
         <!-- Header -->
         <header class="dashboard-header">
             <div class="header-content">
-                <h1>📊 Tracking Analytics Dashboard</h1>
+                <h1>📊 Monthly Tracking Dashboard</h1>
                 <div class="header-controls">
-                    <button id="refreshBtn" class="refresh-btn">🔄 Refresh Data</button>
+                    <button id="refreshBtn" class="refresh-btn">🔄 Refresh</button>
                     <div class="status-indicator">
                         <span id="statusText">Ready</span>
                         <div id="statusDot" class="status-dot"></div>
@@ -26,237 +26,119 @@
         <!-- Loading Screen -->
         <div id="loadingScreen" class="loading-screen">
             <div class="loading-spinner"></div>
-            <p>Loading dashboard data...</p>
+            <p>Loading data...</p>
         </div>
 
         <!-- Main Dashboard -->
         <main id="dashboardMain" class="dashboard-main" style="display: none;">
-            <!-- Summary Cards -->
-            <section class="summary-section">
-                <div class="summary-cards">
-                    <div class="summary-card misalignment">
-                        <div class="card-icon">⚠️</div>
-                        <div class="card-content">
-                            <h3>Total Misalignments</h3>
-                            <div class="card-value" id="totalMisalignments">-</div>
-                            <div class="card-subtitle">This Month</div>
-                        </div>
+            <!-- Summary Cards Row -->
+            <section class="summary-row">
+                <div class="summary-card misalignment">
+                    <div class="card-icon">⚠️</div>
+                    <div class="card-content">
+                        <h3>Misalignments</h3>
+                        <div class="card-value" id="totalMisalignments">-</div>
+                        <div class="card-subtitle">This Month</div>
                     </div>
-                    <div class="summary-card alerts">
-                        <div class="card-icon">🚨</div>
-                        <div class="card-content">
-                            <h3>Total Alerts</h3>
-                            <div class="card-value" id="totalAlerts">-</div>
-                            <div class="card-subtitle">This Month</div>
-                        </div>
+                </div>
+                <div class="summary-card alerts">
+                    <div class="card-icon">🚨</div>
+                    <div class="card-content">
+                        <h3>Alerts</h3>
+                        <div class="card-value" id="totalAlerts">-</div>
+                        <div class="card-subtitle">This Month</div>
                     </div>
-                    <div class="summary-card videos">
-                        <div class="card-icon">🎥</div>
-                        <div class="card-content">
-                            <h3>Video Requests</h3>
-                            <div class="card-value" id="totalVideos">-</div>
-                            <div class="card-subtitle">This Month</div>
-                        </div>
+                </div>
+                <div class="summary-card videos">
+                    <div class="card-icon">🎥</div>
+                    <div class="card-content">
+                        <h3>Video Requests</h3>
+                        <div class="card-value" id="totalVideos">-</div>
+                        <div class="card-subtitle">This Month</div>
                     </div>
-                    <div class="summary-card issues">
-                        <div class="card-icon">🔧</div>
-                        <div class="card-content">
-                            <h3>Total Issues</h3>
-                            <div class="card-value" id="totalIssues">-</div>
-                            <div class="card-subtitle">This Month</div>
-                        </div>
+                </div>
+                <div class="summary-card issues">
+                    <div class="card-icon">🔧</div>
+                    <div class="card-content">
+                        <h3>Issues</h3>
+                        <div class="card-value" id="totalIssues">-</div>
+                        <div class="card-subtitle">This Month</div>
                     </div>
                 </div>
             </section>
 
-            <!-- Tabs Navigation -->
-            <div class="tabs-container">
-                <div class="tabs">
-                    <button class="tab-button active" data-tab="misalignment">Misalignment Tracking</button>
-                    <button class="tab-button" data-tab="alerts">Alert Tracking</button>
-                    <button class="tab-button" data-tab="videos">Video Requests</button>
-                    <button class="tab-button" data-tab="issues">Issue Tracking</button>
+            <!-- Charts Row -->
+            <section class="charts-row">
+                <div class="chart-card">
+                    <h3>📈 Monthly Misalignments</h3>
+                    <canvas id="misalignmentChart"></canvas>
+                    <div class="chart-stats">
+                        <span>Raised: <strong id="misalignmentRaised">-</strong></span>
+                        <span>Rectified: <strong id="misalignmentRectified">-</strong></span>
+                        <span>Rate: <strong id="misalignmentRate">-%</strong></span>
+                    </div>
                 </div>
-            </div>
+                <div class="chart-card">
+                    <h3>🚨 Monthly Alerts</h3>
+                    <canvas id="alertChart"></canvas>
+                    <div class="chart-stats">
+                        <span>Total: <strong id="alertTotal">-</strong></span>
+                        <span>Peak: <strong id="alertPeak">-</strong></span>
+                        <span>Avg: <strong id="alertAvg">-</strong></span>
+                    </div>
+                </div>
+            </section>
 
-            <!-- Tab Content -->
-            <div class="tab-content active" id="misalignment-tab">
-                <div class="section-header">
-                    <h2>🎯 Misalignment Analysis</h2>
-                    <div class="section-controls">
-                        <select id="misalignmentMonth" class="month-selector">
-                            <option value="all">All Months</option>
-                        </select>
+            <!-- Video & Issues Row -->
+            <section class="charts-row">
+                <div class="chart-card">
+                    <h3>🎥 Video Requests</h3>
+                    <canvas id="videoChart"></canvas>
+                    <div class="chart-stats">
+                        <span>Fastest: <strong id="videoFastest">-</strong></span>
+                        <span>Average: <strong id="videoAverage">-</strong></span>
+                        <span>Slowest: <strong id="videoSlowest">-</strong></span>
                     </div>
                 </div>
-                <div class="analytics-grid">
-                    <div class="chart-container">
-                        <h3>Monthly Misalignments Trend</h3>
-                        <canvas id="misalignmentChart"></canvas>
-                    </div>
-                    <div class="stats-container">
-                        <h3>Daily Statistics</h3>
-                        <div class="stats-list" id="misalignmentStats">
-                            <!-- Dynamic stats will be populated here -->
-                        </div>
+                <div class="chart-card">
+                    <h3>🔧 Issue Resolution</h3>
+                    <canvas id="issueChart"></canvas>
+                    <div class="chart-stats">
+                        <span>Fastest: <strong id="issueFastest">-</strong></span>
+                        <span>Average: <strong id="issueAverage">-</strong></span>
+                        <span>Slowest: <strong id="issueSlowest">-</strong></span>
                     </div>
                 </div>
-                <div class="data-table-container">
-                    <h3>Client-wise Misalignment Details</h3>
+            </section>
+
+            <!-- Data Tables -->
+            <section class="tables-section">
+                <div class="table-card">
+                    <h3>🎯 Monthly Summary by Client</h3>
                     <div class="table-wrapper">
-                        <table id="misalignmentTable" class="data-table">
+                        <table id="summaryTable" class="data-table">
                             <thead>
                                 <tr>
-                                    <th>Client Name</th>
+                                    <th>Client</th>
                                     <th>Month</th>
-                                    <th>Total Misalignments</th>
-                                    <th>Rectified</th>
-                                    <th>Pending</th>
-                                    <th>Most Frequent Vehicle</th>
+                                    <th>Misalignments</th>
+                                    <th>Alerts</th>
+                                    <th>Videos</th>
+                                    <th>Issues</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <!-- Dynamic data will be populated here -->
-                            </tbody>
+                            <tbody></tbody>
                         </table>
                     </div>
                 </div>
-            </div>
-
-            <div class="tab-content" id="alerts-tab">
-                <div class="section-header">
-                    <h2>🚨 Alert Analysis</h2>
-                    <div class="section-controls">
-                        <select id="alertMonth" class="month-selector">
-                            <option value="all">All Months</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="analytics-grid">
-                    <div class="chart-container">
-                        <h3>Monthly Alerts Trend</h3>
-                        <canvas id="alertChart"></canvas>
-                    </div>
-                    <div class="stats-container">
-                        <h3>Alert Statistics</h3>
-                        <div class="stats-list" id="alertStats">
-                            <!-- Dynamic stats will be populated here -->
-                        </div>
-                    </div>
-                </div>
-                <div class="data-table-container">
-                    <h3>Client-wise Alert Details</h3>
-                    <div class="table-wrapper">
-                        <table id="alertTable" class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Client Name</th>
-                                    <th>Month</th>
-                                    <th>Total Alerts</th>
-                                    <th>Avg Daily</th>
-                                    <th>Peak Day</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Dynamic data will be populated here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="videos-tab">
-                <div class="section-header">
-                    <h2>🎥 Video Request Analysis</h2>
-                    <div class="section-controls">
-                        <select id="videoMonth" class="month-selector">
-                            <option value="all">All Months</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="analytics-grid">
-                    <div class="chart-container">
-                        <h3>Monthly Video Requests</h3>
-                        <canvas id="videoChart"></canvas>
-                    </div>
-                    <div class="stats-container">
-                        <h3>Response Time Analysis</h3>
-                        <div class="stats-list" id="videoStats">
-                            <!-- Dynamic stats will be populated here -->
-                        </div>
-                    </div>
-                </div>
-                <div class="data-table-container">
-                    <h3>Client-wise Video Request Details</h3>
-                    <div class="table-wrapper">
-                        <table id="videoTable" class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Client Name</th>
-                                    <th>Month</th>
-                                    <th>Total Requests</th>
-                                    <th>Avg Response Time</th>
-                                    <th>Fastest Response</th>
-                                    <th>Slowest Response</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Dynamic data will be populated here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="issues-tab">
-                <div class="section-header">
-                    <h2>🔧 Issue Tracking Analysis</h2>
-                    <div class="section-controls">
-                        <select id="issueMonth" class="month-selector">
-                            <option value="all">All Months</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="analytics-grid">
-                    <div class="chart-container">
-                        <h3>Monthly Issues Trend</h3>
-                        <canvas id="issueChart"></canvas>
-                    </div>
-                    <div class="stats-container">
-                        <h3>Resolution Time Analysis</h3>
-                        <div class="stats-list" id="issueStats">
-                            <!-- Dynamic stats will be populated here -->
-                        </div>
-                    </div>
-                </div>
-                <div class="data-table-container">
-                    <h3>Client-wise Issue Details</h3>
-                    <div class="table-wrapper">
-                        <table id="issueTable" class="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Client Name</th>
-                                    <th>Month</th>
-                                    <th>Total Issues</th>
-                                    <th>Resolved</th>
-                                    <th>Pending</th>
-                                    <th>Avg Resolution Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Dynamic data will be populated here -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+            </section>
         </main>
 
         <!-- Error Message -->
         <div id="errorMessage" class="error-message" style="display: none;">
             <div class="error-content">
                 <h3>⚠️ Error Loading Data</h3>
-                <p id="errorText">Failed to load dashboard data. Please check your connection and try again.</p>
+                <p id="errorText">Failed to load data. Please try again.</p>
                 <button onclick="location.reload()" class="retry-btn">Retry</button>
             </div>
         </div>
