@@ -1,163 +1,712 @@
-createOverviewChart() {
-        const ctx = document.getElementById('overview-chart');
-        if (!ctx) return;
-        
-        // Combine all data for overview
-        const misalignmentData = this.data.misalignments.monthly;
-        const videoData = this.data.videoRequests.monthly;
-        const issuesData = this.data.issues.monthly;
-        const alertsData = this.data.alerts.monthly;
-        
-        // Get all unique months
-        const allMonths = [...new Set([
-            ...misalignmentData.map(d => d.month),
-            ...videoData.map(d => d.month),
-            ...issuesData.map(d => d.month),
-            ...alertsData.map(d => d.month)
-        ])].sort();
-        
-        // Prepare data for each month
-        const chartData = allMonths.map(month => {
-            const misalignment = misalignmentData.find(d => d.month === month) || { raised: 0 };
-            const video = videoData.find(d => d.month === month) || { requests: 0 };
-            const issue = issuesData.find(d => d.month === month) || { raised: 0 };
-            const alert = alertsData.find(d => d.month === month) || { alerts: 0 };
+// Professional Dashboard Script
+class TrackingDashboard {
+    constructor() {
+        this.apiKey = 'AIzaSyACruF4Qmzod8c0UlwfsBZlujoKguKsFDM';
+        this.sheets = {
+            misalignment: {
+                id: '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY',
+                range: 'Misalignment_Tracking!A:Z'
+            },
+            alerts: {
+                id: '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY',
+                range: 'Alert_Tracking!A:Z'
+            },
+            videos: {
+                id: '1oHapc5HADod_2zPi0l1r8Ef2PjQlb4pfe-p9cKZFB2I',
+                range: 'Issues- Realtime!A:Z'
+            },
+            issues: {
+                id: '1oHapc5HADod_2zPi0l1r8Ef2PjQlb4pfe-p9cKZFB2I',
+                range: 'Issues- Realtime!A:Z'
+            }
+        };
+        this.data = {};
+        this.charts = {};
+        this.init();
+    }
+
+    init() {
+        this.setupEventListeners();
+        this.loadAllData();
+    }
+
+    setupEventListeners() {
+        // Tab switching
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', (e) => {
+                this.switchTab(e.target.dataset.tab);
+            });
+        });
+
+        // Refresh button
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            this.loadAllData();
+        });
+
+        // Month selectors
+        document.querySelectorAll('.month-selector').forEach(selector => {
+            selector.addEventListener('change', (e) => {
+                this.filterDataByMonth(e.target.id, e.target.value);
+            });
+        });
+    }
+
+    switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+        // Update tab content
+        document.querySelectorAll('.tab-content').forEach(content => {
+            content.classList.remove('active');
+        });
+        document.getElementById(`${tabName}-tab`).classList.add('active');
+    }
+
+    async loadAllData() {
+        this.showLoading(true);
+        this.updateStatus('Loading data...', 'loading');
+
+        try {
+            await Promise.all([
+                this.loadMisalignmentData(),
+                this.loadAlertData(),
+                this.loadVideoData(),
+                this.loadIssueData()
+            ]);
+
+            this.renderDashboard();
+            this.showLoading(false);
+            this.updateStatus('Ready', 'success');
+        } catch (error) {
+            console.error('Error loading data:', error);
+            this.showError('Failed to load data. Please try again.');
+            this.updateStatus('Error', 'error');
+        }
+    }
+
+    async fetchSheetData(sheetConfig) {
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetConfig.id}/values/${sheetConfig.range}?key=${this.apiKey}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return await response.json();
+    }
+
+    async loadMisalignmentData() {
+        try {
+            const response = await this.fetchSheetData(this.sheets.misalignment);
+            const rows = response.values || [];
             
-            return {
-                month,
-                misalignments: misalignment.raised,
-                videos: video.requests,
-                issues: issue.raised,
-                alerts: alert.alerts
+            if (rows.length === 0) {
+                this.data.misalignment = { processed: [], summary: {} };
+                return;
+            }
+
+            const headers = rows[0];
+            const dateIndex = this.findColumnIndex(headers, 'Date');
+            const vehicleIndex = this.findColumnIndex(headers, 'Vehicle Numbers');
+            const clientIndex = this.findColumnIndex(headers, 'Client Name');
+
+            const processed = this.processMisalignmentData(rows.slice(1), { dateIndex, vehicleIndex, clientIndex });
+            
+            this.data.misalignment = {
+                raw: rows,
+                processed: processed,
+                summary: this.generateMisalignmentSummary(processed)
             };
+        } catch (error) {
+            console.error('Error loading misalignment data:', error);
+            this.data.misalignment = { processed: [], summary: {} };
+        }
+    }
+
+    async loadAlertData() {
+        try {
+            const response = await this.fetchSheetData(this.sheets.alerts);
+            const rows = response.values || [];
+            
+            if (rows.length === 0) {
+                this.data.alerts = { processed: [], summary: {} };
+                return;
+            }
+
+            const headers = rows[0];
+            const dateIndex = this.findColumnIndex(headers, 'Date');
+            const alertTypeIndex = this.findColumnIndex(headers, 'Alert Type');
+            const clientIndex = this.findColumnIndex(headers, 'Client Name');
+
+            const processed = this.processAlertData(rows.slice(1), { dateIndex, alertTypeIndex, clientIndex });
+            
+            this.data.alerts = {
+                raw: rows,
+                processed: processed,
+                summary: this.generateAlertSummary(processed)
+            };
+        } catch (error) {
+            console.error('Error loading alert data:', error);
+            this.data.alerts = { processed: [], summary: {} };
+        }
+    }
+
+    async loadVideoData() {
+        try {
+            const response = await this.fetchSheetData(this.sheets.videos);
+            const rows = response.values || [];
+            
+            if (rows.length === 0) {
+                this.data.videos = { processed: [], summary: {} };
+                return;
+            }
+
+            const headers = rows[0];
+            const raisedIndex = this.findColumnIndex(headers, 'Timestamp Issues Raised');
+            const resolvedIndex = this.findColumnIndex(headers, 'Timestamp Issues Resolved');
+            const issueIndex = this.findColumnIndex(headers, 'Issue');
+            const clientIndex = this.findColumnIndex(headers, 'Client');
+
+            const processed = this.processVideoData(rows.slice(1), { raisedIndex, resolvedIndex, issueIndex, clientIndex });
+            
+            this.data.videos = {
+                raw: rows,
+                processed: processed,
+                summary: this.generateVideoSummary(processed)
+            };
+        } catch (error) {
+            console.error('Error loading video data:', error);
+            this.data.videos = { processed: [], summary: {} };
+        }
+    }
+
+    async loadIssueData() {
+        try {
+            const response = await this.fetchSheetData(this.sheets.issues);
+            const rows = response.values || [];
+            
+            if (rows.length === 0) {
+                this.data.issues = { processed: [], summary: {} };
+                return;
+            }
+
+            const headers = rows[0];
+            const raisedIndex = this.findColumnIndex(headers, 'Timestamp Issues Raised');
+            const resolvedIndex = this.findColumnIndex(headers, 'Timestamp Issues Resolved');
+            const clientIndex = this.findColumnIndex(headers, 'Client');
+
+            const processed = this.processIssueData(rows.slice(1), { raisedIndex, resolvedIndex, clientIndex });
+            
+            this.data.issues = {
+                raw: rows,
+                processed: processed,
+                summary: this.generateIssueSummary(processed)
+            };
+        } catch (error) {
+            console.error('Error loading issue data:', error);
+            this.data.issues = { processed: [], summary: {} };
+        }
+    }
+
+    findColumnIndex(headers, columnName) {
+        const index = headers.findIndex(header => 
+            header && header.toLowerCase().includes(columnName.toLowerCase())
+        );
+        return index !== -1 ? index : 0;
+    }
+
+    parseDate(dateStr) {
+        if (!dateStr) return null;
+        
+        // Handle various date formats
+        const formats = [
+            /(\d{1,2})\/(\d{1,2})\/(\d{4})/,  // DD/MM/YYYY or MM/DD/YYYY
+            /(\d{1,2})\/(\d{1,2})\/(\d{2})/,  // DD/MM/YY or MM/DD/YY
+            /(\d{4})-(\d{1,2})-(\d{1,2})/,    // YYYY-MM-DD
+            /(\d{1,2})-(\d{1,2})-(\d{4})/     // DD-MM-YYYY
+        ];
+
+        for (let format of formats) {
+            const match = dateStr.match(format);
+            if (match) {
+                if (match[3].length === 2) {
+                    // Convert YY to YYYY
+                    match[3] = '20' + match[3];
+                }
+                
+                // Assume DD/MM/YYYY format for ambiguous cases
+                const day = parseInt(match[1]);
+                const month = parseInt(match[2]);
+                const year = parseInt(match[3]);
+                
+                if (day <= 12 && month > 12) {
+                    // MM/DD/YYYY format
+                    return new Date(year, day - 1, month);
+                } else {
+                    // DD/MM/YYYY format
+                    return new Date(year, month - 1, day);
+                }
+            }
+        }
+        
+        // Try standard Date parsing as fallback
+        const date = new Date(dateStr);
+        return isNaN(date.getTime()) ? null : date;
+    }
+
+    processMisalignmentData(rows, indices) {
+        const processed = [];
+        const vehicleTracker = new Map(); // Track vehicle appearances by date
+        
+        rows.forEach(row => {
+            if (!row[indices.dateIndex]) return;
+            
+            const date = this.parseDate(row[indices.dateIndex]);
+            if (!date) return;
+            
+            const vehicles = row[indices.vehicleIndex] ? 
+                row[indices.vehicleIndex].split(',').map(v => v.trim()).filter(v => v) : [];
+            const client = row[indices.clientIndex] || 'Unknown';
+            
+            const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            const dateKey = date.toISOString().split('T')[0];
+            
+            // Track vehicles for misalignment detection
+            if (!vehicleTracker.has(dateKey)) {
+                vehicleTracker.set(dateKey, new Set());
+            }
+            
+            vehicles.forEach(vehicle => {
+                vehicleTracker.get(dateKey).add(vehicle);
+                
+                processed.push({
+                    date: date,
+                    dateKey: dateKey,
+                    monthYear: monthYear,
+                    vehicle: vehicle,
+                    client: client,
+                    type: 'raised'
+                });
+            });
         });
         
-        this.charts.overview = new Chart(ctx, {
+        // Detect rectified vehicles (vehicles that appear one day but not the next)
+        const sortedDates = Array.from(vehicleTracker.keys()).sort();
+        const rectified = [];
+        
+        for (let i = 0; i < sortedDates.length - 1; i++) {
+            const currentDate = sortedDates[i];
+            const nextDate = sortedDates[i + 1];
+            const currentVehicles = vehicleTracker.get(currentDate);
+            const nextVehicles = vehicleTracker.get(nextDate);
+            
+            currentVehicles.forEach(vehicle => {
+                if (!nextVehicles.has(vehicle)) {
+                    const nextDateObj = new Date(nextDate);
+                    const monthYear = `${nextDateObj.getFullYear()}-${String(nextDateObj.getMonth() + 1).padStart(2, '0')}`;
+                    
+                    rectified.push({
+                        date: nextDateObj,
+                        dateKey: nextDate,
+                        monthYear: monthYear,
+                        vehicle: vehicle,
+                        client: this.getClientForVehicle(processed, vehicle),
+                        type: 'rectified'
+                    });
+                }
+            });
+        }
+        
+        return [...processed, ...rectified];
+    }
+
+    getClientForVehicle(processed, vehicle) {
+        const entry = processed.find(p => p.vehicle === vehicle);
+        return entry ? entry.client : 'Unknown';
+    }
+
+    processAlertData(rows, indices) {
+        const processed = [];
+        
+        rows.forEach(row => {
+            if (!row[indices.dateIndex] || !row[indices.alertTypeIndex]) return;
+            
+            const date = this.parseDate(row[indices.dateIndex]);
+            if (!date) return;
+            
+            const alertType = row[indices.alertTypeIndex].trim();
+            
+            // Skip "No L2 alerts found"
+            if (alertType.toLowerCase().includes('no l2 alerts found')) return;
+            
+            const client = row[indices.clientIndex] || 'Unknown';
+            const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            
+            processed.push({
+                date: date,
+                monthYear: monthYear,
+                alertType: alertType,
+                client: client
+            });
+        });
+        
+        return processed;
+    }
+
+    processVideoData(rows, indices) {
+        const processed = [];
+        
+        rows.forEach(row => {
+            if (!row[indices.raisedIndex] || !row[indices.issueIndex]) return;
+            
+            const issue = row[indices.issueIndex].trim();
+            
+            // Only process "Historical Video Request"
+            if (!issue.toLowerCase().includes('historical video request')) return;
+            
+            const raisedDate = this.parseDate(row[indices.raisedIndex]);
+            if (!raisedDate) return;
+            
+            const resolvedDate = row[indices.resolvedIndex] ? this.parseDate(row[indices.resolvedIndex]) : null;
+            const client = row[indices.clientIndex] || 'Unknown';
+            const monthYear = `${raisedDate.getFullYear()}-${String(raisedDate.getMonth() + 1).padStart(2, '0')}`;
+            
+            let responseTime = null;
+            if (resolvedDate) {
+                responseTime = Math.abs(resolvedDate.getTime() - raisedDate.getTime()) / (1000 * 60 * 60); // hours
+            }
+            
+            processed.push({
+                raisedDate: raisedDate,
+                resolvedDate: resolvedDate,
+                monthYear: monthYear,
+                client: client,
+                responseTime: responseTime,
+                status: resolvedDate ? 'resolved' : 'pending'
+            });
+        });
+        
+        return processed;
+    }
+
+    processIssueData(rows, indices) {
+        const processed = [];
+        
+        rows.forEach(row => {
+            if (!row[indices.raisedIndex]) return;
+            
+            const raisedDate = this.parseDate(row[indices.raisedIndex]);
+            if (!raisedDate) return;
+            
+            const resolvedDate = row[indices.resolvedIndex] ? this.parseDate(row[indices.resolvedIndex]) : null;
+            const client = row[indices.clientIndex] || 'Unknown';
+            const monthYear = `${raisedDate.getFullYear()}-${String(raisedDate.getMonth() + 1).padStart(2, '0')}`;
+            
+            let resolutionTime = null;
+            if (resolvedDate) {
+                resolutionTime = Math.abs(resolvedDate.getTime() - raisedDate.getTime()) / (1000 * 60 * 60); // hours
+            }
+            
+            processed.push({
+                raisedDate: raisedDate,
+                resolvedDate: resolvedDate,
+                monthYear: monthYear,
+                client: client,
+                resolutionTime: resolutionTime,
+                status: resolvedDate ? 'resolved' : 'pending'
+            });
+        });
+        
+        return processed;
+    }
+
+    generateMisalignmentSummary(data) {
+        const summary = {
+            monthly: {},
+            clientMonthly: {},
+            vehicleFrequency: {},
+            totalMisalignments: 0,
+            totalRectified: 0
+        };
+        
+        data.forEach(item => {
+            // Monthly summary
+            if (!summary.monthly[item.monthYear]) {
+                summary.monthly[item.monthYear] = { raised: 0, rectified: 0 };
+            }
+            
+            if (item.type === 'raised') {
+                summary.monthly[item.monthYear].raised++;
+                summary.totalMisalignments++;
+            } else {
+                summary.monthly[item.monthYear].rectified++;
+                summary.totalRectified++;
+            }
+            
+            // Client monthly summary
+            const clientKey = `${item.client}-${item.monthYear}`;
+            if (!summary.clientMonthly[clientKey]) {
+                summary.clientMonthly[clientKey] = {
+                    client: item.client,
+                    month: item.monthYear,
+                    raised: 0,
+                    rectified: 0,
+                    vehicles: new Set()
+                };
+            }
+            
+            if (item.type === 'raised') {
+                summary.clientMonthly[clientKey].raised++;
+                summary.clientMonthly[clientKey].vehicles.add(item.vehicle);
+            } else {
+                summary.clientMonthly[clientKey].rectified++;
+            }
+            
+            // Vehicle frequency
+            if (item.type === 'raised') {
+                const vehicleKey = `${item.client}-${item.vehicle}`;
+                if (!summary.vehicleFrequency[vehicleKey]) {
+                    summary.vehicleFrequency[vehicleKey] = {
+                        client: item.client,
+                        vehicle: item.vehicle,
+                        count: 0
+                    };
+                }
+                summary.vehicleFrequency[vehicleKey].count++;
+            }
+        });
+        
+        return summary;
+    }
+
+    generateAlertSummary(data) {
+        const summary = {
+            monthly: {},
+            clientMonthly: {},
+            totalAlerts: data.length
+        };
+        
+        data.forEach(item => {
+            // Monthly summary
+            if (!summary.monthly[item.monthYear]) {
+                summary.monthly[item.monthYear] = 0;
+            }
+            summary.monthly[item.monthYear]++;
+            
+            // Client monthly summary
+            const clientKey = `${item.client}-${item.monthYear}`;
+            if (!summary.clientMonthly[clientKey]) {
+                summary.clientMonthly[clientKey] = {
+                    client: item.client,
+                    month: item.monthYear,
+                    count: 0
+                };
+            }
+            summary.clientMonthly[clientKey].count++;
+        });
+        
+        return summary;
+    }
+
+    generateVideoSummary(data) {
+        const summary = {
+            monthly: {},
+            clientMonthly: {},
+            totalRequests: data.length,
+            responseTimes: {
+                fastest: null,
+                slowest: null,
+                average: null,
+                all: []
+            }
+        };
+        
+        const validResponseTimes = data.filter(item => item.responseTime !== null).map(item => item.responseTime);
+        
+        if (validResponseTimes.length > 0) {
+            summary.responseTimes.fastest = Math.min(...validResponseTimes);
+            summary.responseTimes.slowest = Math.max(...validResponseTimes);
+            summary.responseTimes.average = validResponseTimes.reduce((a, b) => a + b, 0) / validResponseTimes.length;
+            summary.responseTimes.all = validResponseTimes;
+        }
+        
+        data.forEach(item => {
+            // Monthly summary
+            if (!summary.monthly[item.monthYear]) {
+                summary.monthly[item.monthYear] = { total: 0, resolved: 0 };
+            }
+            summary.monthly[item.monthYear].total++;
+            if (item.status === 'resolved') {
+                summary.monthly[item.monthYear].resolved++;
+            }
+            
+            // Client monthly summary
+            const clientKey = `${item.client}-${item.monthYear}`;
+            if (!summary.clientMonthly[clientKey]) {
+                summary.clientMonthly[clientKey] = {
+                    client: item.client,
+                    month: item.monthYear,
+                    total: 0,
+                    resolved: 0,
+                    responseTimes: []
+                };
+            }
+            summary.clientMonthly[clientKey].total++;
+            if (item.status === 'resolved') {
+                summary.clientMonthly[clientKey].resolved++;
+                if (item.responseTime !== null) {
+                    summary.clientMonthly[clientKey].responseTimes.push(item.responseTime);
+                }
+            }
+        });
+        
+        return summary;
+    }
+
+    generateIssueSummary(data) {
+        const summary = {
+            monthly: {},
+            clientMonthly: {},
+            totalIssues: data.length,
+            resolutionTimes: {
+                fastest: null,
+                slowest: null,
+                average: null,
+                all: []
+            }
+        };
+        
+        const validResolutionTimes = data.filter(item => item.resolutionTime !== null).map(item => item.resolutionTime);
+        
+        if (validResolutionTimes.length > 0) {
+            summary.resolutionTimes.fastest = Math.min(...validResolutionTimes);
+            summary.resolutionTimes.slowest = Math.max(...validResolutionTimes);
+            summary.resolutionTimes.average = validResolutionTimes.reduce((a, b) => a + b, 0) / validResolutionTimes.length;
+            summary.resolutionTimes.all = validResolutionTimes;
+        }
+        
+        data.forEach(item => {
+            // Monthly summary
+            if (!summary.monthly[item.monthYear]) {
+                summary.monthly[item.monthYear] = { total: 0, resolved: 0 };
+            }
+            summary.monthly[item.monthYear].total++;
+            if (item.status === 'resolved') {
+                summary.monthly[item.monthYear].resolved++;
+            }
+            
+            // Client monthly summary
+            const clientKey = `${item.client}-${item.monthYear}`;
+            if (!summary.clientMonthly[clientKey]) {
+                summary.clientMonthly[clientKey] = {
+                    client: item.client,
+                    month: item.monthYear,
+                    total: 0,
+                    resolved: 0,
+                    resolutionTimes: []
+                };
+            }
+            summary.clientMonthly[clientKey].total++;
+            if (item.status === 'resolved') {
+                summary.clientMonthly[clientKey].resolved++;
+                if (item.resolutionTime !== null) {
+                    summary.clientMonthly[clientKey].resolutionTimes.push(item.resolutionTime);
+                }
+            }
+        });
+        
+        return summary;
+    }
+
+    renderDashboard() {
+        this.updateSummaryCards();
+        this.populateMonthSelectors();
+        this.renderCharts();
+        this.renderTables();
+        this.renderStats();
+    }
+
+    updateSummaryCards() {
+        const currentMonth = new Date().toISOString().slice(0, 7);
+        
+        // Misalignments
+        const misalignmentCount = this.data.misalignment.summary.monthly[currentMonth]?.raised || 0;
+        document.getElementById('totalMisalignments').textContent = misalignmentCount;
+        
+        // Alerts
+        const alertCount = this.data.alerts.summary.monthly[currentMonth] || 0;
+        document.getElementById('totalAlerts').textContent = alertCount;
+        
+        // Videos
+        const videoCount = this.data.videos.summary.monthly[currentMonth]?.total || 0;
+        document.getElementById('totalVideos').textContent = videoCount;
+        
+        // Issues
+        const issueCount = this.data.issues.summary.monthly[currentMonth]?.total || 0;
+        document.getElementById('totalIssues').textContent = issueCount;
+    }
+
+    populateMonthSelectors() {
+        const allMonths = new Set();
+        
+        // Collect all months from all datasets
+        Object.keys(this.data.misalignment.summary.monthly || {}).forEach(month => allMonths.add(month));
+        Object.keys(this.data.alerts.summary.monthly || {}).forEach(month => allMonths.add(month));
+        Object.keys(this.data.videos.summary.monthly || {}).forEach(month => allMonths.add(month));
+        Object.keys(this.data.issues.summary.monthly || {}).forEach(month => allMonths.add(month));
+        
+        const sortedMonths = Array.from(allMonths).sort().reverse();
+        
+        document.querySelectorAll('.month-selector').forEach(selector => {
+            selector.innerHTML = '<option value="all">All Months</option>';
+            sortedMonths.forEach(month => {
+                const option = document.createElement('option');
+                option.value = month;
+                option.textContent = new Date(month + '-01').toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long' 
+                });
+                selector.appendChild(option);
+            });
+        });
+    }
+
+    renderCharts() {
+        this.renderMisalignmentChart();
+        this.renderAlertChart();
+        this.renderVideoChart();
+        this.renderIssueChart();
+    }
+
+    renderMisalignmentChart() {
+        const ctx = document.getElementById('misalignmentChart').getContext('2d');
+        
+        if (this.charts.misalignment) {
+            this.charts.misalignment.destroy();
+        }
+        
+        const monthlyData = this.data.misalignment.summary.monthly;
+        const labels = Object.keys(monthlyData).sort();
+        const raisedData = labels.map(month => monthlyData[month].raised);
+        const rectifiedData = labels.map(month => monthlyData[month].rectified);
+        
+        this.charts.misalignment = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: chartData.map(item => item.month),
-                datasets: [
-                    {
-                        label: 'Misalignments',
-                        data: chartData.map(item => item.misalignments),
-                        borderColor: '#e74c3c',
-                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                        tension: 0.4,
-                        fill: false
-                    },
-                    {
-                        label: 'Video Requests',
-                        data: chartData.map(item => item.videos),
-                        borderColor: '#3498db',
-                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                        tension: 0.4,
-                        fill: false
-                    },
-                    {
-                        label: 'Issues',
-                        data: chartData.map(item => item.issues),
-                        borderColor: '#f39c12',
-                        backgroundColor: 'rgba(243, 156, 18, 0.1)',
-                        tension: 0.4,
-                        fill: false
-                    },
-                    {
-                        label: 'Alerts',
-                        data: chartData.map(item => item.alerts),
-                        borderColor: '#9b59b6',
-                        backgroundColor: 'rgba(155, 89, 182, 0.1)',
-                        tension: 0.4,
-                        fill: false
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'top',
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    }
-    
-    createAlertsChart() {
-        const ctx = document.getElementById('alerts-chart');
-        if (!ctx) return;
-        
-        const data = this.data.alerts.monthly;
-        
-        this.charts.alerts = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: data.map(item => item.month),
-                datasets: [
-                    {
-                        label: 'Alerts',
-                        data: data.map(item => item.alerts),
-                        backgroundColor: '#9b59b6',
-                        borderColor: '#8e44ad',
-                        borderWidth: 1
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'top',
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    }
-                plugins: {
-                    legend: {
-                        position: 'top',
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    }
-    
-    createOverviewPieChart() {
-        const ctx = document.getElementById('overview-pie-chart');
-        if (!ctx) return;
-        
-        const { summaryStats } = this.data;
-        
-        this.charts.overviewPie = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Misalignments', 'Video Requests', 'Issues', 'Alerts'],
+                labels: labels.map(month => new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })),
                 datasets: [{
-                    data: [
-                        summaryStats.totalMisalignments || 0,
-                        summaryStats.totalVideoRequests || 0,
-                        summaryStats.totalIssues || 0,
-                        summaryStats.totalAlerts || 0
-                    ],
-                    backgroundColor: ['#e74c3c', '#3498db', '#f39c12', '#9b59b6'],
-                    borderWidth: 2,
-                    borderColor: '#fff'
+                    label: 'Raised',
+                    data: raisedData,
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    tension: 0.4
+                }, {
+                    label: 'Rectified',
+                    data: rectifiedData,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    tension: 0.4
                 }]
             },
             options: {
@@ -165,632 +714,47 @@ createOverviewChart() {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'bottom',
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
                     }
                 }
             }
         });
-    }
-    
-    createOverviewResolutionChart() {
-        const ctx = document.getElementById('overview-resolution-chart');
-        if (!ctx) return;
-        
-        const misalignmentResolved = this.data.misalignments.monthly.reduce((sum, item) => sum + item.resolved, 0);
-        const misalignmentTotal = this.data.misalignments.monthly.reduce((sum, item) => sum + item.raised, 0);
-        
-        const issuesResolved = this.data.issues.monthly.reduce((sum, item) => sum + item.resolved, 0);
-        const issuesTotal = this.data.issues.monthly.reduce((sum, item) => sum + item.raised, 0);
-        
-        const videoDelivered = this.data.videoRequests.monthly.reduce((sum, item) => sum + item.resolved, 0);
-        const videoTotal = this.data.videoRequests.monthly.reduce((sum, item) => sum + item.requests, 0);
-        
-        this.charts.overviewResolution = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: ['Misalignments', 'Issues', 'Video Requests'],
-                datasets: [
-                    {
-                        label: 'Total',
-                        data: [misalignmentTotal, issuesTotal, videoTotal],
-                        backgroundColor: ['rgba(231, 76, 60, 0.3)', 'rgba(243, 156, 18, 0.3)', 'rgba(52, 152, 219, 0.3)'],
-                        borderColor: ['#e74c3c', '#f39c12', '#3498db'],
-                        borderWidth: 1
-                    },
-                    {
-                        label: 'Resolved/Delivered',
-                        data: [misalignmentResolved, issuesResolved, videoDelivered],
-                        backgroundColor: ['#e74c3c', '#f39c12', '#3498db'],
-                        borderColor: ['#c0392b', '#e67e22', '#2980b9'],
-                        borderWidth: 1
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,// Dashboard JavaScript
-class VehicleMonitoringDashboard {
-    constructor() {
-        this.API_KEY = 'AIzaSyACruF4Qmzod8c0UlwfsBZlujoKguKsFDM';
-        this.SHEET_IDS = {
-            misalignment: '1GPDqOSURZNALalPzfHNbMft0HQ1c_fIkgfu_V3fSroY',
-            issues: '1oHapc5HADod_2zPi0l1r8Ef2PjQlb4pfe-p9cKZFB2I'
-        };
-        
-        this.data = {
-            misalignments: { monthly: [], byClient: {}, vehicleRepeats: {} },
-            videoRequests: { monthly: [], byClient: {}, responseStats: { fastest: 0, median: 0, slowest: 0 } },
-            issues: { monthly: [], byClient: {}, resolutionStats: { fastest: 0, median: 0, slowest: 0 } },
-            alerts: { monthly: [], byClient: {} },
-            summaryStats: {}
-        };
-        
-        this.charts = {};
-        this.currentTab = 'overview';
-        this.isLoading = false;
-        
-        this.init();
-    }
-    
-    init() {
-        this.setupEventListeners();
-        this.loadData();
-    }
-    
-    setupEventListeners() {
-        // Tab switching
-        document.querySelectorAll('.tab').forEach(tab => {
-            tab.addEventListener('click', (e) => {
-                const tabName = e.currentTarget.dataset.tab;
-                this.switchTab(tabName);
-            });
-        });
-        
-        // Refresh buttons
-        document.getElementById('refresh-btn').addEventListener('click', () => {
-            this.loadData();
-        });
-        
-        document.getElementById('footer-refresh-btn').addEventListener('click', () => {
-            this.loadData();
-        });
-    }
-    
-    switchTab(tabName) {
-        // Update active tab
-        document.querySelectorAll('.tab').forEach(tab => {
-            tab.classList.remove('active');
-        });
-        document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-        
-        // Update active content
-        document.querySelectorAll('.tab-content').forEach(content => {
-            content.classList.remove('active');
-        });
-        document.getElementById(`${tabName}-tab`).classList.add('active');
-        
-        this.currentTab = tabName;
-    }
-    
-    showLoading() {
-        document.getElementById('loading-screen').classList.remove('hidden');
-        document.getElementById('dashboard').classList.add('hidden');
-        document.getElementById('error-screen').classList.add('hidden');
-        this.isLoading = true;
-        
-        // Update refresh button states
-        const refreshBtns = [document.getElementById('refresh-btn'), document.getElementById('footer-refresh-btn')];
-        refreshBtns.forEach(btn => {
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
-            }
-        });
-    }
-    
-    hideLoading() {
-        document.getElementById('loading-screen').classList.add('hidden');
-        document.getElementById('dashboard').classList.remove('hidden');
-        document.getElementById('error-screen').classList.add('hidden');
-        this.isLoading = false;
-        
-        // Reset refresh button states
-        const refreshBtns = [document.getElementById('refresh-btn'), document.getElementById('footer-refresh-btn')];
-        refreshBtns.forEach(btn => {
-            if (btn) {
-                btn.disabled = false;
-            }
-        });
-        document.getElementById('refresh-btn').innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Data';
-        document.getElementById('footer-refresh-btn').innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Data';
-        
-        // Update last updated time
-        document.getElementById('last-updated').textContent = new Date().toLocaleString();
-    }
-    
-    showError(message) {
-        document.getElementById('loading-screen').classList.add('hidden');
-        document.getElementById('dashboard').classList.add('hidden');
-        document.getElementById('error-screen').classList.remove('hidden');
-        document.getElementById('error-message').textContent = message;
-        this.isLoading = false;
-    }
-    
-    async fetchGoogleSheetData(sheetId, range) {
-        try {
-            const response = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${this.API_KEY}`
-            );
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            return data.values || [];
-        } catch (error) {
-            console.error('Error fetching sheet data:', error);
-            throw error;
-        }
-    }
-    
-    parseDate(dateStr) {
-        if (!dateStr) return null;
-        
-        // Handle different date formats
-        const formats = [
-            /^(\d{2})-(\d{2})-(\d{4})$/, // DD-MM-YYYY
-            /^(\d{2})\/(\d{2})\/(\d{4})$/, // DD/MM/YYYY
-            /^(\d{2})-(\d{2})-(\d{2})$/, // DD-MM-YY
-            /^(\d{2})\/(\d{2})\/(\d{2})$/, // DD/MM/YY
-            /^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/ // DD/MM/YYYY HH:MM:SS
-        ];
-        
-        for (let format of formats) {
-            const match = dateStr.match(format);
-            if (match) {
-                let day, month, year;
-                if (format.source.includes('HH:MM:SS')) {
-                    [, day, month, year] = match;
-                } else {
-                    [, day, month, year] = match;
-                }
-                
-                // Handle 2-digit years
-                if (year && year.length === 2) {
-                    year = '20' + year;
-                }
-                
-                return new Date(year, month - 1, day);
-            }
-        }
-        
-        return new Date(dateStr);
-    }
-    
-    getMonthYear(date) {
-        if (!date || isNaN(date)) return null;
-        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-    }
-    
-    formatDuration(hours) {
-        if (hours === 0) return '0 min';
-        
-        const totalMinutes = Math.round(hours * 60);
-        
-        // If less than 60 minutes, show in minutes
-        if (totalMinutes < 60) {
-            return `${totalMinutes} min`;
-        }
-        
-        // If less than 24 hours, show in hours and minutes
-        if (hours < 24) {
-            const hrs = Math.floor(hours);
-            const mins = Math.round((hours - hrs) * 60);
-            if (mins === 0) {
-                return `${hrs}h`;
-            }
-            return `${hrs}h ${mins}m`;
-        }
-        
-        // If more than 24 hours, show in days and hours
-        const days = Math.floor(hours / 24);
-        const remainingHours = Math.round(hours % 24);
-        if (remainingHours === 0) {
-            return `${days} day${days > 1 ? 's' : ''}`;
-        }
-        return `${days} day${days > 1 ? 's' : ''} ${remainingHours}h`;
     }
 
-    processAlertsData(rawData) {
-        if (!rawData || rawData.length < 2) return { monthly: [], byClient: {} };
+    renderAlertChart() {
+        const ctx = document.getElementById('alertChart').getContext('2d');
         
-        const [headers, ...rows] = rawData;
-        const monthlyData = {};
-        const clientData = {};
-        
-        // Find Alert Type column index (should be around column H or I)
-        const alertTypeIndex = headers.findIndex(header => 
-            header && header.toLowerCase().includes('alert') && header.toLowerCase().includes('type')
-        );
-        
-        rows.forEach(row => {
-            const raisedDate = this.parseDate(row[5]); // Timestamp Issues Raised
-            const client = row[2] || 'Unknown';
-            const alertType = row[alertTypeIndex] || '';
-            
-            // Skip if no date or if it's "No L2 alerts found"
-            if (!raisedDate || alertType.toLowerCase().includes('no l2 alerts found')) return;
-            
-            const monthKey = this.getMonthYear(raisedDate);
-            if (!monthKey) return;
-            
-            // Initialize data structures
-            if (!monthlyData[monthKey]) {
-                monthlyData[monthKey] = { month: monthKey, alerts: 0 };
-            }
-            if (!clientData[client]) {
-                clientData[client] = {};
-            }
-            if (!clientData[client][monthKey]) {
-                clientData[client][monthKey] = { alerts: 0 };
-            }
-            
-            monthlyData[monthKey].alerts++;
-            clientData[client][monthKey].alerts++;
-        });
-        
-        return {
-            monthly: Object.values(monthlyData),
-            byClient: clientData
-        };
-    }
-    
-    processMisalignmentData(rawData) {
-        if (!rawData || rawData.length < 2) return { monthly: [], byClient: {}, vehicleRepeats: {} };
-        
-        const [headers, ...rows] = rawData;
-        const monthlyData = {};
-        const clientData = {};
-        const vehicleRepeatData = {};
-        
-        rows.forEach(row => {
-            const date = this.parseDate(row[0]);
-            const client = row[1] || 'Unknown';
-            const vehicles = row[2] ? row[2].split(',').map(v => v.trim()) : [];
-            
-            if (!date) return;
-            
-            const monthKey = this.getMonthYear(date);
-            if (!monthKey) return;
-            
-            // Initialize monthly data
-            if (!monthlyData[monthKey]) {
-                monthlyData[monthKey] = { month: monthKey, raised: 0, resolved: 0 };
-            }
-            
-            // Initialize client data
-            if (!clientData[client]) {
-                clientData[client] = {};
-            }
-            if (!clientData[client][monthKey]) {
-                clientData[client][monthKey] = { raised: 0, vehicles: new Set() };
-            }
-            
-            // Count raised misalignments
-            vehicles.forEach(vehicle => {
-                monthlyData[monthKey].raised++;
-                clientData[client][monthKey].raised++;
-                clientData[client][monthKey].vehicles.add(vehicle);
-                
-                // Track vehicle repeats
-                if (!vehicleRepeatData[vehicle]) {
-                    vehicleRepeatData[vehicle] = { client, count: 0, months: new Set() };
-                }
-                vehicleRepeatData[vehicle].count++;
-                vehicleRepeatData[vehicle].months.add(monthKey);
-            });
-        });
-        
-        return {
-            monthly: Object.values(monthlyData),
-            byClient: clientData,
-            vehicleRepeats: vehicleRepeatData
-        };
-    }
-    
-    processVideoRequestData(rawData) {
-        if (!rawData || rawData.length < 2) return { monthly: [], byClient: {}, responseStats: { fastest: 0, median: 0, slowest: 0 } };
-        
-        const [headers, ...rows] = rawData;
-        const monthlyData = {};
-        const clientData = {};
-        const responseTimes = [];
-        
-        rows.forEach(row => {
-            const raisedDate = this.parseDate(row[5]); // Timestamp Issues Raised
-            const resolvedDate = this.parseDate(row[20]); // Timestamp Issues Resolved
-            const issue = row[8] || '';
-            const client = row[2] || 'Unknown';
-            
-            if (!raisedDate || issue !== 'Historical Video Request') return;
-            
-            const monthKey = this.getMonthYear(raisedDate);
-            if (!monthKey) return;
-            
-            // Initialize data structures
-            if (!monthlyData[monthKey]) {
-                monthlyData[monthKey] = { month: monthKey, requests: 0, resolved: 0 };
-            }
-            if (!clientData[client]) {
-                clientData[client] = {};
-            }
-            if (!clientData[client][monthKey]) {
-                clientData[client][monthKey] = { requests: 0, resolved: 0 };
-            }
-            
-            monthlyData[monthKey].requests++;
-            clientData[client][monthKey].requests++;
-            
-            if (resolvedDate) {
-                monthlyData[monthKey].resolved++;
-                clientData[client][monthKey].resolved++;
-                
-                const duration = this.calculateDuration(raisedDate, resolvedDate);
-                responseTimes.push(duration);
-            }
-        });
-        
-        // Calculate response time statistics
-        const sortedTimes = responseTimes.sort((a, b) => a - b);
-        const stats = {
-            fastest: sortedTimes[0] || 0,
-            median: sortedTimes[Math.floor(sortedTimes.length / 2)] || 0,
-            slowest: sortedTimes[sortedTimes.length - 1] || 0
-        };
-        
-        return {
-            monthly: Object.values(monthlyData),
-            byClient: clientData,
-            responseStats: stats
-        };
-    }
-    
-    processIssuesData(rawData) {
-        if (!rawData || rawData.length < 2) return { monthly: [], byClient: {}, resolutionStats: { fastest: 0, median: 0, slowest: 0 } };
-        
-        const [headers, ...rows] = rawData;
-        const monthlyData = {};
-        const clientData = {};
-        const resolutionTimes = [];
-        
-        rows.forEach(row => {
-            const raisedDate = this.parseDate(row[5]);
-            const resolvedDate = this.parseDate(row[20]);
-            const client = row[2] || 'Unknown';
-            
-            if (!raisedDate) return;
-            
-            const monthKey = this.getMonthYear(raisedDate);
-            if (!monthKey) return;
-            
-            // Initialize data structures
-            if (!monthlyData[monthKey]) {
-                monthlyData[monthKey] = { month: monthKey, raised: 0, resolved: 0 };
-            }
-            if (!clientData[client]) {
-                clientData[client] = {};
-            }
-            if (!clientData[client][monthKey]) {
-                clientData[client][monthKey] = { raised: 0, resolved: 0 };
-            }
-            
-            monthlyData[monthKey].raised++;
-            clientData[client][monthKey].raised++;
-            
-            if (resolvedDate) {
-                monthlyData[monthKey].resolved++;
-                clientData[client][monthKey].resolved++;
-                
-                const duration = this.calculateDuration(raisedDate, resolvedDate);
-                resolutionTimes.push(duration);
-            }
-        });
-        
-        // Calculate resolution time statistics
-        const sortedTimes = resolutionTimes.sort((a, b) => a - b);
-        const stats = {
-            fastest: sortedTimes[0] || 0,
-            median: sortedTimes[Math.floor(sortedTimes.length / 2)] || 0,
-            slowest: sortedTimes[sortedTimes.length - 1] || 0
-        };
-        
-        return {
-            monthly: Object.values(monthlyData),
-            byClient: clientData,
-            resolutionStats: stats
-        };
-    }
-    
-    async loadData() {
-        if (this.isLoading) return;
-        
-        this.showLoading();
-        
-        try {
-            // Fetch all sheets data
-            const [misalignmentData, issuesData] = await Promise.all([
-                this.fetchGoogleSheetData(this.SHEET_IDS.misalignment, 'Misalignment_Tracking!A:F'),
-                this.fetchGoogleSheetData(this.SHEET_IDS.issues, 'Issues- Realtime!A:AH')
-            ]);
-            
-            // Process the data
-            const processedMisalignment = this.processMisalignmentData(misalignmentData);
-            const processedVideoRequests = this.processVideoRequestData(issuesData);
-            const processedIssues = this.processIssuesData(issuesData);
-            const processedAlerts = this.processAlertsData(issuesData);
-            
-            // Calculate summary statistics
-            const totalMisalignments = processedMisalignment.monthly.reduce((sum, item) => sum + item.raised, 0);
-            const totalVideoRequests = processedVideoRequests.monthly.reduce((sum, item) => sum + item.requests, 0);
-            const totalIssues = processedIssues.monthly.reduce((sum, item) => sum + item.raised, 0);
-            const totalAlerts = processedAlerts.monthly.reduce((sum, item) => sum + item.alerts, 0);
-            
-            this.data = {
-                misalignments: processedMisalignment,
-                videoRequests: processedVideoRequests,
-                issues: processedIssues,
-                alerts: processedAlerts,
-                summaryStats: {
-                    totalMisalignments,
-                    totalVideoRequests,
-                    totalIssues,
-                    totalAlerts,
-                    avgResponseTime: processedVideoRequests.responseStats.median,
-                    avgResolutionTime: processedIssues.resolutionStats.median
-                }
-            };
-            
-            this.updateUI();
-            this.hideLoading();
-            
-        } catch (error) {
-            console.error('Error loading data:', error);
-            this.showError('Failed to load data. Please check your internet connection and try again.');
+        if (this.charts.alert) {
+            this.charts.alert.destroy();
         }
-    }
-    
-    updateUI() {
-        this.updateSummaryStats();
-        this.updateCharts();
-        this.updateTables();
-    }
-    
-    updateSummaryStats() {
-        const { summaryStats, videoRequests, issues } = this.data;
         
-        // Overview stats
-        document.getElementById('total-misalignments').textContent = summaryStats.totalMisalignments?.toLocaleString() || '0';
-        document.getElementById('total-videos').textContent = summaryStats.totalVideoRequests?.toLocaleString() || '0';
-        document.getElementById('total-alerts').textContent = summaryStats.totalAlerts?.toLocaleString() || '0';
-        document.getElementById('total-issues').textContent = summaryStats.totalIssues?.toLocaleString() || '0';
-        document.getElementById('avg-response').textContent = this.formatDuration(summaryStats.avgResponseTime || 0);
+        const monthlyData = this.data.alerts.summary.monthly;
+        const labels = Object.keys(monthlyData).sort();
+        const alertData = labels.map(month => monthlyData[month]);
         
-        // Video request stats
-        document.getElementById('fastest-response').textContent = this.formatDuration(videoRequests.responseStats.fastest || 0);
-        document.getElementById('median-response').textContent = this.formatDuration(videoRequests.responseStats.median || 0);
-        document.getElementById('slowest-response').textContent = this.formatDuration(videoRequests.responseStats.slowest || 0);
-        
-        // Issue resolution stats
-        document.getElementById('fastest-resolution').textContent = this.formatDuration(issues.resolutionStats.fastest || 0);
-        document.getElementById('median-resolution').textContent = this.formatDuration(issues.resolutionStats.median || 0);
-        document.getElementById('slowest-resolution').textContent = this.formatDuration(issues.resolutionStats.slowest || 0);
-    }
-    
-    updateCharts() {
-        // Destroy existing charts
-        Object.values(this.charts).forEach(chart => {
-            if (chart) chart.destroy();
-        });
-        this.charts = {};
-        
-        // Overview Charts
-        this.createOverviewChart();
-        this.createOverviewPieChart();
-        this.createOverviewResolutionChart();
-        
-        // Alerts Chart
-        this.createAlertsChart();
-        
-        // Misalignment Chart
-        this.createMisalignmentChart();
-        
-        // Video Requests Chart (now single chart since no requests vs resolved)
-        this.createVideoRequestsChart();
-        
-        // Issues Chart
-        this.createIssuesChart();
-    }
-    
-    createOverviewChart() {
-        const ctx = document.getElementById('overview-chart');
-        if (!ctx) return;
-        
-        const data = this.data.misalignments.monthly;
-        
-        this.charts.overview = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.map(item => item.month),
-                datasets: [
-                    {
-                        label: 'Misalignments Raised',
-                        data: data.map(item => item.raised),
-                        borderColor: '#e74c3c',
-                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    },
-                    {
-                        label: 'Misalignments Resolved',
-                        data: data.map(item => item.resolved),
-                        borderColor: '#27ae60',
-                        backgroundColor: 'rgba(39, 174, 96, 0.1)',
-                        tension: 0.4,
-                        fill: true
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'top',
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    }
-    
-    createMisalignmentChart() {
-        const ctx = document.getElementById('misalignment-chart');
-        if (!ctx) return;
-        
-        const data = this.data.misalignments.monthly;
-        
-        this.charts.misalignment = new Chart(ctx, {
+        this.charts.alert = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: data.map(item => item.month),
-                datasets: [
-                    {
-                        label: 'Raised',
-                        data: data.map(item => item.raised),
-                        backgroundColor: '#e74c3c',
-                        borderColor: '#c0392b',
-                        borderWidth: 1
-                    },
-                    {
-                        label: 'Resolved',
-                        data: data.map(item => item.resolved),
-                        backgroundColor: '#27ae60',
-                        borderColor: '#229954',
-                        borderWidth: 1
-                    }
-                ]
+                labels: labels.map(month => new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })),
+                datasets: [{
+                    label: 'Alerts',
+                    data: alertData,
+                    backgroundColor: '#ef4444',
+                    borderColor: '#dc2626',
+                    borderWidth: 1
+                }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'top',
+                        display: false
                     }
                 },
                 scales: {
@@ -801,78 +765,43 @@ class VehicleMonitoringDashboard {
             }
         });
     }
-    
-    createVideoRequestsChart() {
-        const ctx = document.getElementById('video-requests-chart');
-        if (!ctx) return;
+
+    renderVideoChart() {
+        const ctx = document.getElementById('videoChart').getContext('2d');
         
-        const data = this.data.videoRequests.monthly;
+        if (this.charts.video) {
+            this.charts.video.destroy();
+        }
         
-        this.charts.videoRequests = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.map(item => item.month),
-                datasets: [
-                    {
-                        label: 'Video Requests',
-                        data: data.map(item => item.requests),
-                        borderColor: '#3498db',
-                        backgroundColor: 'rgba(52, 152, 219, 0.2)',
-                        tension: 0.4,
-                        fill: true
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'top',
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    }
-    
-    createIssuesChart() {
-        const ctx = document.getElementById('issues-chart');
-        if (!ctx) return;
+        const monthlyData = this.data.videos.summary.monthly;
+        const labels = Object.keys(monthlyData).sort();
+        const totalData = labels.map(month => monthlyData[month].total);
+        const resolvedData = labels.map(month => monthlyData[month].resolved);
         
-        const data = this.data.issues.monthly;
-        
-        this.charts.issues = new Chart(ctx, {
+        this.charts.video = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: data.map(item => item.month),
-                datasets: [
-                    {
-                        label: 'Raised',
-                        data: data.map(item => item.raised),
-                        backgroundColor: '#f39c12',
-                        borderColor: '#e67e22',
-                        borderWidth: 1
-                    },
-                    {
-                        label: 'Resolved',
-                        data: data.map(item => item.resolved),
-                        backgroundColor: '#27ae60',
-                        borderColor: '#229954',
-                        borderWidth: 1
-                    }
-                ]
+                labels: labels.map(month => new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })),
+                datasets: [{
+                    label: 'Total Requests',
+                    data: totalData,
+                    backgroundColor: '#06b6d4',
+                    borderColor: '#0891b2',
+                    borderWidth: 1
+                }, {
+                    label: 'Resolved',
+                    data: resolvedData,
+                    backgroundColor: '#10b981',
+                    borderColor: '#059669',
+                    borderWidth: 1
+                }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'top',
+                        position: 'top'
                     }
                 },
                 scales: {
@@ -883,125 +812,372 @@ class VehicleMonitoringDashboard {
             }
         });
     }
-    
-    updateTables() {
-        this.updateClientLists();
-        this.updateVehicleTable();
+
+    renderIssueChart() {
+        const ctx = document.getElementById('issueChart').getContext('2d');
+        
+        if (this.charts.issue) {
+            this.charts.issue.destroy();
+        }
+        
+        const monthlyData = this.data.issues.summary.monthly;
+        const labels = Object.keys(monthlyData).sort();
+        const totalData = labels.map(month => monthlyData[month].total);
+        const resolvedData = labels.map(month => monthlyData[month].resolved);
+        
+        this.charts.issue = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels.map(month => new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })),
+                datasets: [{
+                    label: 'Total Issues',
+                    data: totalData,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.4
+                }, {
+                    label: 'Resolved',
+                    data: resolvedData,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
     }
-    
-    updateClientLists() {
-        // Top clients for misalignments
-        const topClientsContainer = document.getElementById('top-clients');
-        if (topClientsContainer) {
-            const clientData = Object.entries(this.data.misalignments.byClient || {})
-                .sort(([,a], [,b]) => {
-                    const aTotal = Object.values(a).reduce((sum, month) => sum + month.raised, 0);
-                    const bTotal = Object.values(b).reduce((sum, month) => sum + month.raised, 0);
-                    return bTotal - aTotal;
-                })
-                .slice(0, 10);
-            
-            topClientsContainer.innerHTML = clientData.map(([client, months]) => {
-                const total = Object.values(months).reduce((sum, month) => sum + month.raised, 0);
-                return `
-                    <div class="client-item">
-                        <span class="client-name">${client}</span>
-                        <span class="client-count text-red">${total}</span>
-                    </div>
-                `;
-            }).join('');
-        }
+
+    renderStats() {
+        this.renderMisalignmentStats();
+        this.renderAlertStats();
+        this.renderVideoStats();
+        this.renderIssueStats();
+    }
+
+    renderMisalignmentStats() {
+        const stats = this.data.misalignment.summary;
+        const container = document.getElementById('misalignmentStats');
         
-        // Alert clients
-        const alertClientsContainer = document.getElementById('alert-clients');
-        if (alertClientsContainer) {
-            const clientData = Object.entries(this.data.alerts.byClient || {})
-                .sort(([,a], [,b]) => {
-                    const aTotal = Object.values(a).reduce((sum, month) => sum + month.alerts, 0);
-                    const bTotal = Object.values(b).reduce((sum, month) => sum + month.alerts, 0);
-                    return bTotal - aTotal;
-                })
-                .slice(0, 10);
-            
-            alertClientsContainer.innerHTML = clientData.map(([client, months]) => {
-                const total = Object.values(months).reduce((sum, month) => sum + month.alerts, 0);
-                return `
-                    <div class="client-item">
-                        <span class="client-name">${client}</span>
-                        <span class="client-count text-purple">${total}</span>
-                    </div>
-                `;
-            }).join('');
-        }
+        const avgDaily = stats.totalMisalignments / Math.max(Object.keys(stats.monthly).length * 30, 1);
+        const rectificationRate = stats.totalRectified / Math.max(stats.totalMisalignments, 1) * 100;
         
-        // Video request clients
-        const videoClientsContainer = document.getElementById('video-clients');
-        if (videoClientsContainer) {
-            const clientData = Object.entries(this.data.videoRequests.byClient || {})
-                .sort(([,a], [,b]) => {
-                    const aTotal = Object.values(a).reduce((sum, month) => sum + month.requests, 0);
-                    const bTotal = Object.values(b).reduce((sum, month) => sum + month.requests, 0);
-                    return bTotal - aTotal;
-                });
-            
-            videoClientsContainer.innerHTML = clientData.map(([client, months]) => {
-                const total = Object.values(months).reduce((sum, month) => sum + month.requests, 0);
-                return `
-                    <div class="client-item">
-                        <span class="client-name">${client}</span>
-                        <span class="client-count text-blue">${total}</span>
-                    </div>
-                `;
-            }).join('');
-        }
+        container.innerHTML = `
+            <div class="stat-item">
+                <div class="stat-label">Total Misalignments</div>
+                <div class="stat-value">${stats.totalMisalignments}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Total Rectified</div>
+                <div class="stat-value">${stats.totalRectified}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Rectification Rate</div>
+                <div class="stat-value">${rectificationRate.toFixed(1)}%</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Avg Daily</div>
+                <div class="stat-value">${avgDaily.toFixed(1)}</div>
+            </div>
+        `;
+    }
+
+    renderAlertStats() {
+        const stats = this.data.alerts.summary;
+        const container = document.getElementById('alertStats');
         
-        // Issue clients
-        const issueClientsContainer = document.getElementById('issue-clients');
-        if (issueClientsContainer) {
-            const clientData = Object.entries(this.data.issues.byClient || {})
-                .sort(([,a], [,b]) => {
-                    const aTotal = Object.values(a).reduce((sum, month) => sum + month.raised, 0);
-                    const bTotal = Object.values(b).reduce((sum, month) => sum + month.raised, 0);
-                    return bTotal - aTotal;
-                });
+        const monthlyValues = Object.values(stats.monthly);
+        const avgMonthly = monthlyValues.reduce((a, b) => a + b, 0) / Math.max(monthlyValues.length, 1);
+        const peakMonth = Math.max(...monthlyValues, 0);
+        
+        container.innerHTML = `
+            <div class="stat-item">
+                <div class="stat-label">Total Alerts</div>
+                <div class="stat-value">${stats.totalAlerts}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Avg Monthly</div>
+                <div class="stat-value">${avgMonthly.toFixed(0)}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Peak Month</div>
+                <div class="stat-value">${peakMonth}</div>
+            </div>
+        `;
+    }
+
+    renderVideoStats() {
+        const stats = this.data.videos.summary;
+        const container = document.getElementById('videoStats');
+        
+        const formatTime = (hours) => {
+            if (hours < 1) return `${(hours * 60).toFixed(0)} min`;
+            if (hours < 24) return `${hours.toFixed(1)} hrs`;
+            return `${(hours / 24).toFixed(1)} days`;
+        };
+        
+        container.innerHTML = `
+            <div class="stat-item">
+                <div class="stat-label">Total Requests</div>
+                <div class="stat-value">${stats.totalRequests}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Fastest Response</div>
+                <div class="stat-value">${stats.responseTimes.fastest ? formatTime(stats.responseTimes.fastest) : 'N/A'}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Average Response</div>
+                <div class="stat-value">${stats.responseTimes.average ? formatTime(stats.responseTimes.average) : 'N/A'}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Slowest Response</div>
+                <div class="stat-value">${stats.responseTimes.slowest ? formatTime(stats.responseTimes.slowest) : 'N/A'}</div>
+            </div>
+        `;
+    }
+
+    renderIssueStats() {
+        const stats = this.data.issues.summary;
+        const container = document.getElementById('issueStats');
+        
+        const formatTime = (hours) => {
+            if (hours < 1) return `${(hours * 60).toFixed(0)} min`;
+            if (hours < 24) return `${hours.toFixed(1)} hrs`;
+            return `${(hours / 24).toFixed(1)} days`;
+        };
+        
+        const monthlyValues = Object.values(stats.monthly);
+        const totalResolved = monthlyValues.reduce((sum, month) => sum + month.resolved, 0);
+        const resolutionRate = totalResolved / Math.max(stats.totalIssues, 1) * 100;
+        
+        container.innerHTML = `
+            <div class="stat-item">
+                <div class="stat-label">Total Issues</div>
+                <div class="stat-value">${stats.totalIssues}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Resolution Rate</div>
+                <div class="stat-value">${resolutionRate.toFixed(1)}%</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Fastest Resolution</div>
+                <div class="stat-value">${stats.resolutionTimes.fastest ? formatTime(stats.resolutionTimes.fastest) : 'N/A'}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Average Resolution</div>
+                <div class="stat-value">${stats.resolutionTimes.average ? formatTime(stats.resolutionTimes.average) : 'N/A'}</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Slowest Resolution</div>
+                <div class="stat-value">${stats.resolutionTimes.slowest ? formatTime(stats.resolutionTimes.slowest) : 'N/A'}</div>
+            </div>
+        `;
+    }
+
+    renderTables() {
+        this.renderMisalignmentTable();
+        this.renderAlertTable();
+        this.renderVideoTable();
+        this.renderIssueTable();
+    }
+
+    renderMisalignmentTable() {
+        const tbody = document.querySelector('#misalignmentTable tbody');
+        const clientData = this.data.misalignment.summary.clientMonthly;
+        const vehicleFreq = this.data.misalignment.summary.vehicleFrequency;
+        
+        tbody.innerHTML = '';
+        
+        Object.values(clientData).forEach(item => {
+            // Find most frequent vehicle for this client
+            const clientVehicles = Object.values(vehicleFreq)
+                .filter(v => v.client === item.client)
+                .sort((a, b) => b.count - a.count);
             
-            issueClientsContainer.innerHTML = clientData.map(([client, months]) => {
-                const total = Object.values(months).reduce((sum, month) => sum + month.raised, 0);
-                const resolved = Object.values(months).reduce((sum, month) => sum + month.resolved, 0);
-                const percentage = total > 0 ? ((resolved / total) * 100).toFixed(1) : 0;
-                return `
-                    <div class="client-item">
-                        <span class="client-name">${client}</span>
-                        <div class="client-stats">
-                            <span class="client-count text-yellow">${total}</span>
-                            <span class="client-percentage">(${percentage}% resolved)</span>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+            const mostFrequentVehicle = clientVehicles[0] || { vehicle: 'N/A', count: 0 };
+            
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                <td>${item.client}</td>
+                <td>${new Date(item.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td>
+                <td>${item.raised}</td>
+                <td>${item.rectified}</td>
+                <td>${item.raised - item.rectified}</td>
+                <td>${mostFrequentVehicle.vehicle} (${mostFrequentVehicle.count}x)</td>
+            `;
+        });
+    }
+
+    renderAlertTable() {
+        const tbody = document.querySelector('#alertTable tbody');
+        const clientData = this.data.alerts.summary.clientMonthly;
+        
+        tbody.innerHTML = '';
+        
+        Object.values(clientData).forEach(item => {
+            const avgDaily = item.count / 30; // Approximate daily average
+            
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                <td>${item.client}</td>
+                <td>${new Date(item.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td>
+                <td>${item.count}</td>
+                <td>${avgDaily.toFixed(1)}</td>
+                <td>${item.count}</td>
+            `;
+        });
+    }
+
+    renderVideoTable() {
+        const tbody = document.querySelector('#videoTable tbody');
+        const clientData = this.data.videos.summary.clientMonthly;
+        
+        const formatTime = (hours) => {
+            if (!hours) return 'N/A';
+            if (hours < 1) return `${(hours * 60).toFixed(0)} min`;
+            if (hours < 24) return `${hours.toFixed(1)} hrs`;
+            return `${(hours / 24).toFixed(1)} days`;
+        };
+        
+        tbody.innerHTML = '';
+        
+        Object.values(clientData).forEach(item => {
+            const avgResponseTime = item.responseTimes.length > 0 
+                ? item.responseTimes.reduce((a, b) => a + b, 0) / item.responseTimes.length
+                : null;
+            
+            const fastestResponse = item.responseTimes.length > 0 
+                ? Math.min(...item.responseTimes)
+                : null;
+                
+            const slowestResponse = item.responseTimes.length > 0 
+                ? Math.max(...item.responseTimes)
+                : null;
+            
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                <td>${item.client}</td>
+                <td>${new Date(item.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td>
+                <td>${item.total}</td>
+                <td>${formatTime(avgResponseTime)}</td>
+                <td>${formatTime(fastestResponse)}</td>
+                <td>${formatTime(slowestResponse)}</td>
+            `;
+        });
+    }
+
+    renderIssueTable() {
+        const tbody = document.querySelector('#issueTable tbody');
+        const clientData = this.data.issues.summary.clientMonthly;
+        
+        const formatTime = (hours) => {
+            if (!hours) return 'N/A';
+            if (hours < 1) return `${(hours * 60).toFixed(0)} min`;
+            if (hours < 24) return `${hours.toFixed(1)} hrs`;
+            return `${(hours / 24).toFixed(1)} days`;
+        };
+        
+        tbody.innerHTML = '';
+        
+        Object.values(clientData).forEach(item => {
+            const avgResolutionTime = item.resolutionTimes.length > 0 
+                ? item.resolutionTimes.reduce((a, b) => a + b, 0) / item.resolutionTimes.length
+                : null;
+            
+            const row = tbody.insertRow();
+            row.innerHTML = `
+                <td>${item.client}</td>
+                <td>${new Date(item.month + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</td>
+                <td>${item.total}</td>
+                <td>${item.resolved}</td>
+                <td>${item.total - item.resolved}</td>
+                <td>${formatTime(avgResolutionTime)}</td>
+            `;
+        });
+    }
+
+    filterDataByMonth(selectorId, selectedMonth) {
+        // This method can be expanded to filter charts and tables by selected month
+        // For now, it's a placeholder for future functionality
+        console.log(`Filtering ${selectorId} by month: ${selectedMonth}`);
+    }
+
+    showLoading(show) {
+        const loadingScreen = document.getElementById('loadingScreen');
+        const dashboardMain = document.getElementById('dashboardMain');
+        const errorMessage = document.getElementById('errorMessage');
+        
+        if (show) {
+            loadingScreen.style.display = 'flex';
+            dashboardMain.style.display = 'none';
+            errorMessage.style.display = 'none';
+        } else {
+            loadingScreen.style.display = 'none';
+            dashboardMain.style.display = 'block';
+            errorMessage.style.display = 'none';
         }
     }
-    
-    updateVehicleTable() {
-        const tableBody = document.querySelector('#vehicle-table tbody');
-        if (!tableBody) return;
+
+    showError(message) {
+        const loadingScreen = document.getElementById('loadingScreen');
+        const dashboardMain = document.getElementById('dashboardMain');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
         
-        const vehicleData = Object.entries(this.data.misalignments.vehicleRepeats || {})
-            .sort(([,a], [,b]) => b.count - a.count)
-            .slice(0, 10);
+        loadingScreen.style.display = 'none';
+        dashboardMain.style.display = 'none';
+        errorMessage.style.display = 'flex';
+        errorText.textContent = message;
+    }
+
+    updateStatus(text, type) {
+        const statusText = document.getElementById('statusText');
+        const statusDot = document.getElementById('statusDot');
         
-        tableBody.innerHTML = vehicleData.map(([vehicle, info]) => `
-            <tr>
-                <td>${vehicle}</td>
-                <td>${info.client}</td>
-                <td><span class="table-cell-highlight">${info.count}</span></td>
-                <td>${info.months.size}</td>
-            </tr>
-        `).join('');
+        statusText.textContent = text;
+        
+        statusDot.className = 'status-dot';
+        switch (type) {
+            case 'loading':
+                statusDot.style.background = '#f59e0b';
+                break;
+            case 'success':
+                statusDot.style.background = '#10b981';
+                break;
+            case 'error':
+                statusDot.style.background = '#ef4444';
+                break;
+            default:
+                statusDot.style.background = '#6b7280';
+        }
     }
 }
 
-// Initialize the dashboard when the page loads
+// Initialize dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new VehicleMonitoringDashboard();
+    new TrackingDashboard();
+});
+
+// Handle window resize for responsive charts
+window.addEventListener('resize', () => {
+    // Chart.js will automatically handle resize, but we can add custom logic here if needed
+    setTimeout(() => {
+        Object.values(window.dashboard?.charts || {}).forEach(chart => {
+            if (chart && typeof chart.resize === 'function') {
+                chart.resize();
+            }
+        });
+    }, 100);
 });
